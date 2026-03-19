@@ -177,15 +177,16 @@ class Bird {
 class Pipe {
   constructor(x) {
     this.x      = x;
-    this.gapTop = Math.floor(Math.random() * (H - GROUND_H - PIPE_GAP - 60 - 120)) + 120;
+    this.gap    = curGap;
+    this.gapTop = Math.floor(Math.random() * (H - GROUND_H - this.gap - 60 - 120)) + 120;
     this.scored = false;
   }
-  update() { this.x -= PIPE_SPEED; }
+  update() { this.x -= curSpeed; }
   isOffScreen() { return this.x + PIPE_W < 0; }
   getRects() {
     return [
-      { x: this.x, y: 0,                    w: PIPE_W, h: this.gapTop },
-      { x: this.x, y: this.gapTop + PIPE_GAP, w: PIPE_W, h: H - this.gapTop - PIPE_GAP },
+      { x: this.x, y: 0,                      w: PIPE_W, h: this.gapTop },
+      { x: this.x, y: this.gapTop + this.gap,  w: PIPE_W, h: H - this.gapTop - this.gap },
     ];
   }
   draw() {
@@ -198,7 +199,7 @@ class Pipe {
     ctx.fillStyle = "#3c7a3c";
     ctx.fillRect(this.x - PIPE_CAP_PAD / 2, this.gapTop - PIPE_CAP_H,
                  PIPE_W + PIPE_CAP_PAD, PIPE_CAP_H);
-    ctx.fillRect(this.x - PIPE_CAP_PAD / 2, this.gapTop + PIPE_GAP,
+    ctx.fillRect(this.x - PIPE_CAP_PAD / 2, this.gapTop + this.gap,
                  PIPE_W + PIPE_CAP_PAD, PIPE_CAP_H);
   }
 }
@@ -226,13 +227,18 @@ function drawText(text, size, x, y, center = true) {
 // ---------------------------------------------------------------------------
 let state = "start";   // "start" | "playing" | "dead"
 let bird, pipes, score, frame, highScore;
+let curSpeed, curGap, lastDiffScore, flashTimer;
 highScore = 0;
 
 function reset() {
-  bird  = new Bird();
-  pipes = [];
-  score = 0;
-  frame = 0;
+  bird          = new Bird();
+  pipes         = [];
+  score         = 0;
+  frame         = 0;
+  curSpeed      = PIPE_SPEED;
+  curGap        = PIPE_GAP;
+  lastDiffScore = 0;
+  flashTimer    = 0;
 }
 reset();
 
@@ -262,7 +268,7 @@ function update() {
   frame++;
   bird.update();
 
-  const interval = Math.floor(PIPE_SPACING / PIPE_SPEED);
+  const interval = Math.floor(PIPE_SPACING / curSpeed);
   if (frame > 0 && frame % interval === 0) {
     pipes.push(new Pipe(W));
   }
@@ -272,6 +278,13 @@ function update() {
     if (!pipe.scored && pipe.x + PIPE_W < BIRD_X) {
       pipe.scored = true;
       score++;
+      // Increase difficulty every 5 points
+      if (score % 5 === 0 && score !== lastDiffScore) {
+        lastDiffScore = score;
+        curSpeed = Math.min(curSpeed + 0.5, 7);
+        curGap   = Math.max(curGap   - 10,  100);
+        flashTimer = 90;  // show "FASTER!" for 1.5 seconds
+      }
     }
   }
 
@@ -318,6 +331,17 @@ function draw() {
   // Score during play
   if (state === "playing") {
     drawText(String(score), 52, W / 2, 60);
+    // Level indicator
+    const level = Math.floor(score / 5) + 1;
+    drawText(`Lv ${level}`, 18, W - 36, 20);
+    // "FASTER!" flash on difficulty bump
+    if (flashTimer > 0) {
+      flashTimer--;
+      const alpha = Math.min(flashTimer / 30, 1);
+      ctx.globalAlpha = alpha;
+      drawText("FASTER!", 32, W / 2, H / 2 - 80);
+      ctx.globalAlpha = 1;
+    }
   }
 
   // Overlay
