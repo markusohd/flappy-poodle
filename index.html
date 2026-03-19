@@ -382,7 +382,7 @@ function drawBg() {
 // ---------------------------------------------------------------------------
 let state = "start";   // "start" | "playing" | "dead"
 let bird, pipes, score, frame, highScore;
-let curSpeed, curGap, lastDiffScore, flashTimer;
+let curSpeed, curGap, lastDiffScore;
 highScore = 0;
 
 function reset() {
@@ -393,7 +393,6 @@ function reset() {
   curSpeed      = PIPE_SPEED;
   curGap        = PIPE_GAP;
   lastDiffScore = 0;
-  flashTimer    = 0;
 }
 reset();
 
@@ -433,12 +432,11 @@ function update() {
     if (!pipe.scored && pipe.x + PIPE_W < BIRD_X) {
       pipe.scored = true;
       score++;
-      // Increase difficulty every 5 points
-      if (score % 5 === 0 && score !== lastDiffScore) {
+      // Increase difficulty every 25 points
+      if (score % 25 === 0 && score !== lastDiffScore) {
         lastDiffScore = score;
         curSpeed = Math.min(curSpeed + 0.5, 7);
         curGap   = Math.max(curGap   - 10,  100);
-        flashTimer = 90;  // show "FASTER!" for 1.5 seconds
       }
     }
   }
@@ -486,22 +484,11 @@ function draw() {
   // Score during play
   if (state === "playing") {
     drawText(String(score), 52, W / 2, 60);
-    // Level indicator
-    const level = Math.floor(score / 5) + 1;
-    drawText(`Lv ${level}`, 18, W - 36, 20);
-    // "FASTER!" flash on difficulty bump
-    if (flashTimer > 0) {
-      flashTimer--;
-      const alpha = Math.min(flashTimer / 30, 1);
-      ctx.globalAlpha = alpha;
-      drawText("FASTER!", 32, W / 2, H / 2 - 80);
-      ctx.globalAlpha = 1;
-    }
   }
 
   // Overlay
   if (state === "start" || state === "dead") {
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillStyle = "rgba(0,0,0,0.30)";
     ctx.fillRect(0, 0, W, H);
 
     if (state === "start") {
