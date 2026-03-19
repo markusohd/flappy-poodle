@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flappy Poodle</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    }
+  </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const W             = 400;
+const H             = 600;
+const FPS           = 60;
+const GRAVITY       = 0.5;
+const FLAP_STRENGTH = -9;
+const MAX_FALL      = 10;
+const PIPE_W        = 60;
+const PIPE_GAP      = 160;
+const PIPE_SPEED    = 3;
+const PIPE_SPACING  = 220;
+const PIPE_CAP_H    = 16;
+const PIPE_CAP_PAD  = 4;
+const BIRD_W        = 40;
+const BIRD_H        = 30;
+const BIRD_X        = 80;
+const GROUND_H      = 80;
+
+// ---------------------------------------------------------------------------
+// Canvas setup
+// ---------------------------------------------------------------------------
+const canvas = document.getElementById("game");
+canvas.width  = W;
+canvas.height = H;
+const ctx = canvas.getContext("2d");
+
+// ---------------------------------------------------------------------------
+// Poodle sprite (drawn once onto an offscreen canvas)
+// ---------------------------------------------------------------------------
+function makePoodleSprite() {
+  const oc  = document.createElement("canvas");
+  oc.width  = BIRD_W;
+  oc.height = BIRD_H;
+  const c   = oc.getContext("2d");
+
+  // Helper: filled polygon
+  function poly(pts, color) {
+    c.beginPath();
+    c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+    c.closePath();
+    c.fillStyle = color;
+    c.fill();
+  }
+
+  // Wings (behind body)
+  poly([[6,17],[15,17],[12,3],[3,6]],   "#aac4f0");
+  poly([[7,18],[16,18],[13,4],[4,7]],   "#ddeeff");
+  poly([[19,17],[28,17],[32,6],[22,3]], "#aac4f0");
+  poly([[20,18],[29,18],[33,7],[23,4]], "#ddeeff");
+
+  // Tail pom-pom
+  c.beginPath();
+  c.arc(4, 20, 6, 0, Math.PI * 2);
+  c.fillStyle = "#2d2d2d";
+  c.fill();
+  c.beginPath();
+  c.arc(3, 19, 5, 0, Math.PI * 2);
+  c.fillStyle = "#0f0f0f";
+  c.fill();
+
+  // Body
+  c.beginPath();
+  c.ellipse(15, 18, 13, 7, 0, 0, Math.PI * 2);
+  c.fillStyle = "#2d2d2d";
+  c.fill();
+  c.beginPath();
+  c.ellipse(14, 17, 12, 6, 0, 0, Math.PI * 2);
+  c.fillStyle = "#0f0f0f";
+  c.fill();
+
+  // Head fluff — 8 circles in a ring
+  const hx = 29, hy = 16;
+  const offsets = [[7,0],[5,5],[0,7],[-5,5],[-7,0],[-5,-5],[0,-7],[5,-5]];
+  for (const [dx, dy] of offsets) {
+    c.beginPath();
+    c.arc(hx + dx, hy + dy, 4, 0, Math.PI * 2);
+    c.fillStyle = "#0f0f0f";
+    c.fill();
+  }
+
+  // Head center
+  c.beginPath();
+  c.arc(hx, hy, 6, 0, Math.PI * 2);
+  c.fillStyle = "#0f0f0f";
+  c.fill();
+
+  // Eye
+  c.beginPath();
+  c.arc(31, 11, 4, 0, Math.PI * 2);
+  c.fillStyle = "#ffffff";
+  c.fill();
+  c.beginPath();
+  c.arc(32, 11, 2, 0, Math.PI * 2);
+  c.fillStyle = "#0a0a0a";
+  c.fill();
+  c.beginPath();
+  c.arc(33, 10, 1, 0, Math.PI * 2);
+  c.fillStyle = "#ffffff";
+  c.fill();
+
+  // Nose
+  c.beginPath();
+  c.arc(37, 17, 3, 0, Math.PI * 2);
+  c.fillStyle = "#c85a5a";
+  c.fill();
+  c.beginPath();
+  c.arc(37, 17, 2, 0, Math.PI * 2);
+  c.fillStyle = "#963232";
+  c.fill();
+
+  return oc;
+}
+
+const POODLE_SPRITE = makePoodleSprite();
+
+// ---------------------------------------------------------------------------
+// Bird
+// ---------------------------------------------------------------------------
+class Bird {
+  constructor() {
+    this.x     = BIRD_X;
+    this.y     = H / 2;
+    this.vel   = 0;
+    this.angle = 0;
+  }
+  flap() { this.vel = FLAP_STRENGTH; }
+  update() {
+    this.vel   = Math.min(this.vel + GRAVITY, MAX_FALL);
+    this.y    += this.vel;
+    this.angle = Math.max(-30, Math.min(this.vel * 5, 90));
+  }
+  getRect() {
+    return { x: this.x + 4, y: this.y + 4, w: BIRD_W - 8, h: BIRD_H - 8 };
+  }
+  draw() {
+    ctx.save();
+    ctx.translate(this.x + BIRD_W / 2, this.y + BIRD_H / 2);
+    ctx.rotate(this.angle * Math.PI / 180);
+    ctx.drawImage(POODLE_SPRITE, -BIRD_W / 2, -BIRD_H / 2);
+    ctx.restore();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pipe
+// ---------------------------------------------------------------------------
+class Pipe {
+  constructor(x) {
+    this.x      = x;
+    this.gapTop = Math.floor(Math.random() * (H - GROUND_H - PIPE_GAP - 60 - 120)) + 120;
+    this.scored = false;
+  }
+  update() { this.x -= PIPE_SPEED; }
+  isOffScreen() { return this.x + PIPE_W < 0; }
+  getRects() {
+    return [
+      { x: this.x, y: 0,                    w: PIPE_W, h: this.gapTop },
+      { x: this.x, y: this.gapTop + PIPE_GAP, w: PIPE_W, h: H - this.gapTop - PIPE_GAP },
+    ];
+  }
+  draw() {
+    ctx.fillStyle = "#50a050";
+    const [top, bot] = this.getRects();
+    ctx.fillRect(top.x, top.y, top.w, top.h);
+    ctx.fillRect(bot.x, bot.y, bot.w, bot.h);
+
+    // Caps
+    ctx.fillStyle = "#3c7a3c";
+    ctx.fillRect(this.x - PIPE_CAP_PAD / 2, this.gapTop - PIPE_CAP_H,
+                 PIPE_W + PIPE_CAP_PAD, PIPE_CAP_H);
+    ctx.fillRect(this.x - PIPE_CAP_PAD / 2, this.gapTop + PIPE_GAP,
+                 PIPE_W + PIPE_CAP_PAD, PIPE_CAP_H);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function drawText(text, size, x, y, center = true) {
+  ctx.font = `bold ${size}px Arial, sans-serif`;
+  ctx.textAlign    = center ? "center" : "left";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillText(text, x + 2, y + 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, x, y);
+}
+
+// ---------------------------------------------------------------------------
+// Game state
+// ---------------------------------------------------------------------------
+let state = "start";   // "start" | "playing" | "dead"
+let bird, pipes, score, frame, highScore;
+highScore = 0;
+
+function reset() {
+  bird  = new Bird();
+  pipes = [];
+  score = 0;
+  frame = 0;
+}
+reset();
+
+// ---------------------------------------------------------------------------
+// Input
+// ---------------------------------------------------------------------------
+function onAction() {
+  if (state === "start") {
+    state = "playing";
+  } else if (state === "playing") {
+    bird.flap();
+  } else if (state === "dead") {
+    reset();
+    state = "playing";
+  }
+}
+document.addEventListener("keydown", e => { if (e.code === "Space") { e.preventDefault(); onAction(); } });
+canvas.addEventListener("mousedown", () => onAction());
+canvas.addEventListener("touchstart", e => { e.preventDefault(); onAction(); }, { passive: false });
+
+// ---------------------------------------------------------------------------
+// Update
+// ---------------------------------------------------------------------------
+function update() {
+  if (state !== "playing") return;
+
+  frame++;
+  bird.update();
+
+  const interval = Math.floor(PIPE_SPACING / PIPE_SPEED);
+  if (frame > 0 && frame % interval === 0) {
+    pipes.push(new Pipe(W));
+  }
+
+  for (const pipe of pipes) {
+    pipe.update();
+    if (!pipe.scored && pipe.x + PIPE_W < BIRD_X) {
+      pipe.scored = true;
+      score++;
+    }
+  }
+
+  pipes = pipes.filter(p => !p.isOffScreen());
+
+  if (checkCollision()) {
+    highScore = Math.max(highScore, score);
+    state = "dead";
+  }
+}
+
+function checkCollision() {
+  const br = bird.getRect();
+  if (bird.y + BIRD_H >= H - GROUND_H) return true;
+  if (bird.y < 0) return true;
+  for (const pipe of pipes) {
+    for (const r of pipe.getRects()) {
+      if (rectsOverlap(br, r)) return true;
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Draw
+// ---------------------------------------------------------------------------
+function draw() {
+  // Sky
+  ctx.fillStyle = "#64b4e6";
+  ctx.fillRect(0, 0, W, H);
+
+  // Pipes
+  for (const pipe of pipes) pipe.draw();
+
+  // Ground
+  ctx.fillStyle = "#d2aa5a";
+  ctx.fillRect(0, H - GROUND_H, W, GROUND_H);
+  ctx.fillStyle = "#b48c3c";
+  ctx.fillRect(0, H - GROUND_H, W, 4);
+
+  // Bird
+  bird.draw();
+
+  // Score during play
+  if (state === "playing") {
+    drawText(String(score), 52, W / 2, 60);
+  }
+
+  // Overlay
+  if (state === "start" || state === "dead") {
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(0, 0, W, H);
+
+    if (state === "start") {
+      drawText("FLAPPY POODLE", 36, W / 2, H / 2 - 40);
+      drawText("SPACE or Tap to start", 22, W / 2, H / 2 + 20);
+    } else {
+      drawText("GAME OVER",              36, W / 2, H / 2 - 70);
+      drawText(`Score: ${score}`,        22, W / 2, H / 2);
+      drawText(`Best:  ${highScore}`,    22, W / 2, H / 2 + 36);
+      drawText("SPACE or Tap to restart", 20, W / 2, H / 2 + 90);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Loop
+// ---------------------------------------------------------------------------
+let last = 0;
+const STEP = 1000 / FPS;
+
+function loop(ts) {
+  if (ts - last >= STEP) {
+    last = ts;
+    update();
+    draw();
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
