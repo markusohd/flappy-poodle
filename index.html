@@ -223,6 +223,161 @@ function drawText(text, size, x, y, center = true) {
 }
 
 // ---------------------------------------------------------------------------
+// Time-of-day background system
+// ---------------------------------------------------------------------------
+const TOD_TRANS = 8; // score-point transition window at each phase boundary
+
+// Returns [currentPhase (0=morning,1=afternoon,2=night), nextPhase, blend t 0..1]
+function getBlend() {
+  const cycle  = score % 150;
+  const phase  = Math.floor(cycle / 50);
+  const within = cycle % 50;
+  if (within < 50 - TOD_TRANS) return [phase, phase, 0];
+  return [phase, (phase + 1) % 3, (within - (50 - TOD_TRANS)) / TOD_TRANS];
+}
+
+function lerp(a, b, t)    { return a + (b - a) * t; }
+function lerpC(a, b, t)   { return [lerp(a[0],b[0],t)|0, lerp(a[1],b[1],t)|0, lerp(a[2],b[2],t)|0]; }
+function toRgb([r,g,b])   { return `rgb(${r},${g},${b})`; }
+function toRgba([r,g,b],a){ return `rgba(${r},${g},${b},${+a.toFixed(3)})`; }
+
+// Color tables indexed by phase [0=morning, 1=afternoon, 2=night]
+const COLS = {
+  skyTop:  [[55,130,210],  [215,75,15],   [8,12,30]],
+  skyBot:  [[130,200,235], [250,155,55],  [18,32,72]],
+  farMtn:  [[120,155,190], [185,105,55],  [22,38,52]],
+  nearMtn: [[85,125,85],   [115,82,25],   [8,20,8]],
+  tree:    [[30,75,25],    [15,45,12],    [4,10,4]],
+  ground:  [[210,170,90],  [195,135,55],  [130,100,42]],
+  gndLine: [[180,140,60],  [155,105,35],  [95,72,25]],
+};
+
+function getPal() {
+  const [p, n, t] = getBlend();
+  const lc = key => t === 0 ? COLS[key][p] : lerpC(COLS[key][p], COLS[key][n], t);
+  const nightAmt = t === 0 ? (p === 2 ? 1 : 0) : n === 2 ? t : p === 2 ? 1 - t : 0;
+  const aftnAmt  = t === 0 ? (p === 1 ? 1 : 0) : n === 1 ? t : p === 1 ? 1 - t : 0;
+  return {
+    skyTop: lc('skyTop'), skyBot: lc('skyBot'),
+    farMtn: lc('farMtn'), nearMtn: lc('nearMtn'),
+    tree: lc('tree'), ground: lc('ground'), gndLine: lc('gndLine'),
+    nightAmt, aftnAmt,
+  };
+}
+
+// Static background geometry (coordinates for 400×600 canvas, ground at y=520)
+const FAR_PTS  = [[0,520],[40,315],[92,340],[155,276],[216,306],[276,289],[337,316],[392,297],[400,520]];
+const NEAR_PTS = [[0,520],[66,364],[128,393],[194,349],[255,381],[320,358],[375,385],[400,406],[400,520]];
+
+// Trees: [centerX, height, trunkWidth]
+const TREES = [
+  [12,72,9],[50,54,7],[90,88,10],[135,64,8],[180,95,11],
+  [226,58,7],[266,84,10],[307,69,8],[345,78,9],[381,56,7],
+];
+
+// Clouds: arrays of [cx, cy, rx, ry]
+const CLOUDS = [
+  [[65,102,38,19],[98,93,30,17],[127,104,32,18]],
+  [[219,130,42,21],[257,121,33,19],[286,131,36,20]],
+  [[339,93,32,16],[363,85,25,14],[385,94,28,15]],
+];
+
+// Pre-generated star positions [x, y, radius]
+const STARS = Array.from({length:32}, (_,i) => [
+  (i * 97  + 31) % 400,
+  (i * 137 + 53) % 310,
+  i % 5 === 0 ? 1.5 : 1,
+]);
+
+function fillPoly(pts, color) {
+  ctx.beginPath();
+  pts.forEach(([x,y], i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function drawBg() {
+  const p  = getPal();
+  const gY = H - GROUND_H;
+
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, gY);
+  grad.addColorStop(0, toRgb(p.skyTop));
+  grad.addColorStop(1, toRgb(p.skyBot));
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, gY);
+
+  // Stars + crescent moon (night)
+  if (p.nightAmt > 0.01) {
+    const now = Date.now() / 900;
+    for (const [sx, sy, sr] of STARS) {
+      const twinkle = 0.55 + 0.45 * Math.sin(now + sx * 0.05);
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fillStyle = toRgba([255,255,235], p.nightAmt * twinkle);
+      ctx.fill();
+    }
+    ctx.save();
+    ctx.globalAlpha = p.nightAmt;
+    ctx.beginPath(); ctx.arc(308, 68, 18, 0, Math.PI * 2);
+    ctx.fillStyle = "#fffde0"; ctx.fill();
+    ctx.beginPath(); ctx.arc(318, 63, 16, 0, Math.PI * 2); // crescent cutout
+    ctx.fillStyle = toRgb(p.skyTop); ctx.fill();
+    ctx.restore();
+  }
+
+  // Sun (morning & afternoon)
+  if (p.nightAmt < 0.99) {
+    const sx = lerp(330, 355, p.aftnAmt);
+    const sy = lerp(68,  155, p.aftnAmt);
+    const sc = lerpC([255,228,80], [255,70,10], p.aftnAmt);
+    ctx.save();
+    ctx.globalAlpha = 1 - p.nightAmt;
+    const grd = ctx.createRadialGradient(sx, sy, 4, sx, sy, 38);
+    grd.addColorStop(0, toRgba(sc, 0.65));
+    grd.addColorStop(1, toRgba(sc, 0));
+    ctx.fillStyle = grd;
+    ctx.fillRect(sx - 38, sy - 38, 76, 76);
+    ctx.beginPath(); ctx.arc(sx, sy, 20, 0, Math.PI * 2);
+    ctx.fillStyle = toRgb(sc); ctx.fill();
+    ctx.restore();
+  }
+
+  // Clouds (day, tinted orange in afternoon)
+  if (p.nightAmt < 0.99) {
+    const cc = lerpC([238,244,255], [255,192,120], p.aftnAmt);
+    ctx.save();
+    ctx.globalAlpha = (1 - p.nightAmt) * 0.82;
+    for (const cloud of CLOUDS) {
+      for (const [cx, cy, rx, ry] of cloud) {
+        ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fillStyle = toRgb(cc); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  // Far mountains
+  fillPoly(FAR_PTS, toRgb(p.farMtn));
+  // Near mountains
+  fillPoly(NEAR_PTS, toRgb(p.nearMtn));
+
+  // Trees (pine style, two overlapping triangle tiers)
+  for (const [tx, th, tw] of TREES) {
+    ctx.fillStyle = toRgb(p.tree);
+    ctx.fillRect(tx - tw / 2, gY - th * 0.30, tw, th * 0.30); // trunk
+    [[1, 0], [0.72, 0.24]].forEach(([scale, yOff]) => {
+      ctx.beginPath();
+      ctx.moveTo(tx,              gY - th * scale);
+      ctx.lineTo(tx - th * 0.44 * scale, gY - th * 0.28 + th * yOff);
+      ctx.lineTo(tx + th * 0.44 * scale, gY - th * 0.28 + th * yOff);
+      ctx.closePath(); ctx.fill();
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Game state
 // ---------------------------------------------------------------------------
 let state = "start";   // "start" | "playing" | "dead"
@@ -312,17 +467,17 @@ function checkCollision() {
 // Draw
 // ---------------------------------------------------------------------------
 function draw() {
-  // Sky
-  ctx.fillStyle = "#64b4e6";
-  ctx.fillRect(0, 0, W, H);
+  // Sky + mountains + trees (everything behind pipes)
+  drawBg();
 
   // Pipes
   for (const pipe of pipes) pipe.draw();
 
-  // Ground
-  ctx.fillStyle = "#d2aa5a";
+  // Ground (dynamic color)
+  const pal = getPal();
+  ctx.fillStyle = toRgb(pal.ground);
   ctx.fillRect(0, H - GROUND_H, W, GROUND_H);
-  ctx.fillStyle = "#b48c3c";
+  ctx.fillStyle = toRgb(pal.gndLine);
   ctx.fillRect(0, H - GROUND_H, W, 4);
 
   // Bird
