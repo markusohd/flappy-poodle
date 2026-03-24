@@ -144,14 +144,89 @@ function makePoodleSprite() {
 const POODLE_SPRITE = makePoodleSprite();
 
 // ---------------------------------------------------------------------------
+// Blanket sprite — apricot maltipoo
+// ---------------------------------------------------------------------------
+function makeMaltipooSprite() {
+  const oc  = document.createElement("canvas");
+  oc.width  = BIRD_W;
+  oc.height = BIRD_H;
+  const c   = oc.getContext("2d");
+
+  function poly(pts, color) {
+    c.beginPath();
+    c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+    c.closePath();
+    c.fillStyle = color;
+    c.fill();
+  }
+
+  // Wings (same as Pillow — stylised, not breed-specific)
+  poly([[6,17],[15,17],[12,3],[3,6]],   "#aac4f0");
+  poly([[7,18],[16,18],[13,4],[4,7]],   "#ddeeff");
+  poly([[19,17],[28,17],[32,6],[22,3]], "#aac4f0");
+  poly([[20,18],[29,18],[33,7],[23,4]], "#ddeeff");
+
+  // Floppy drop ears (drawn before body so body overlaps top of ears)
+  c.beginPath(); c.ellipse(25, 23, 5, 9, 0.15, 0, Math.PI * 2);
+  c.fillStyle = "#b8743e"; c.fill();
+  c.beginPath(); c.ellipse(33, 22, 4, 8, -0.15, 0, Math.PI * 2);
+  c.fillStyle = "#b8743e"; c.fill();
+
+  // Tail — soft oval (not a tight pom like Pillow)
+  c.beginPath(); c.ellipse(4, 19, 5, 4, -0.2, 0, Math.PI * 2);
+  c.fillStyle = "#c8884a"; c.fill();
+  c.beginPath(); c.ellipse(3, 18, 4, 3, -0.2, 0, Math.PI * 2);
+  c.fillStyle = "#e8a85c"; c.fill();
+
+  // Body
+  c.beginPath(); c.ellipse(15, 18, 13, 7, 0, 0, Math.PI * 2);
+  c.fillStyle = "#c8884a"; c.fill();
+  c.beginPath(); c.ellipse(14, 17, 12, 6, 0, 0, Math.PI * 2);
+  c.fillStyle = "#e8a85c"; c.fill();
+
+  // Head fluff — loose wavy puffs (maltipoo style, not tight pom ring)
+  const hx = 29, hy = 15;
+  for (const [dx, dy] of [[-7,-1],[-5,-5],[-1,-7],[3,-6],[7,-3],[8,1],[6,5]]) {
+    c.beginPath(); c.arc(hx + dx, hy + dy, 5, 0, Math.PI * 2);
+    c.fillStyle = "#c8884a"; c.fill();
+  }
+  // Head face — rounder than Pillow's
+  c.beginPath(); c.arc(hx, hy, 7, 0, Math.PI * 2);
+  c.fillStyle = "#e8a85c"; c.fill();
+
+  // Eye
+  c.beginPath(); c.arc(31, 11, 4, 0, Math.PI * 2);
+  c.fillStyle = "#ffffff"; c.fill();
+  c.beginPath(); c.arc(32, 11, 2.5, 0, Math.PI * 2);
+  c.fillStyle = "#3a1f08"; c.fill();   // dark brown iris
+  c.beginPath(); c.arc(33, 10, 1, 0, Math.PI * 2);
+  c.fillStyle = "#ffffff"; c.fill();
+
+  // Nose — dark (maltipoo) not red like Pillow
+  c.beginPath(); c.ellipse(37, 17, 3.5, 2.5, 0, 0, Math.PI * 2);
+  c.fillStyle = "#1a1010"; c.fill();
+  c.beginPath(); c.ellipse(37, 17, 2.5, 1.8, 0, 0, Math.PI * 2);
+  c.fillStyle = "#2d1a0a"; c.fill();
+
+  return oc;
+}
+
+const MALTIPOO_SPRITE = makeMaltipooSprite();
+
+const CHAR_SPRITES = [POODLE_SPRITE, MALTIPOO_SPRITE];
+const CHAR_NAMES   = ["Pillow", "Blanket"];
+
+// ---------------------------------------------------------------------------
 // Bird
 // ---------------------------------------------------------------------------
 class Bird {
-  constructor() {
-    this.x     = BIRD_X;
-    this.y     = H / 2;
-    this.vel   = 0;
-    this.angle = 0;
+  constructor(sprite) {
+    this.x      = BIRD_X;
+    this.y      = H / 2;
+    this.vel    = 0;
+    this.angle  = 0;
+    this.sprite = sprite;
   }
   flap() { this.vel = FLAP_STRENGTH; }
   update() {
@@ -166,7 +241,7 @@ class Bird {
     ctx.save();
     ctx.translate(this.x + BIRD_W / 2, this.y + BIRD_H / 2);
     ctx.rotate(this.angle * Math.PI / 180);
-    ctx.drawImage(POODLE_SPRITE, -BIRD_W / 2, -BIRD_H / 2);
+    ctx.drawImage(this.sprite, -BIRD_W / 2, -BIRD_H / 2);
     ctx.restore();
   }
 }
@@ -380,13 +455,14 @@ function drawBg() {
 // ---------------------------------------------------------------------------
 // Game state
 // ---------------------------------------------------------------------------
-let state = "start";   // "start" | "playing" | "dead"
+let state = "select";  // "select" | "start" | "playing" | "dead"
 let bird, pipes, score, frame, highScore;
 let curSpeed, curGap, lastDiffScore;
+let selectedChar = 0;  // 0 = Pillow, 1 = Blanket
 highScore = 0;
 
 function reset() {
-  bird          = new Bird();
+  bird          = new Bird(CHAR_SPRITES[selectedChar]);
   pipes         = [];
   score         = 0;
   frame         = 0;
@@ -399,19 +475,60 @@ reset();
 // ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
-function onAction() {
-  if (state === "start") {
+function onKeyAction() {
+  if (state === "select") {
+    reset(); state = "start";
+  } else if (state === "start") {
     state = "playing";
   } else if (state === "playing") {
     bird.flap();
   } else if (state === "dead") {
-    reset();
-    state = "playing";
+    reset(); state = "playing";
   }
 }
-document.addEventListener("keydown", e => { if (e.code === "Space") { e.preventDefault(); onAction(); } });
-canvas.addEventListener("mousedown", () => onAction());
-canvas.addEventListener("touchstart", e => { e.preventDefault(); onAction(); }, { passive: false });
+
+// Select-screen box geometry (must match drawSelectScreen)
+const SEL_BOX_W = 130, SEL_BOX_H = 120;
+const SEL_CENTERS = [[110, 235], [290, 235]];
+
+function onMouseDown(mx, my) {
+  if (state === "select") {
+    for (let i = 0; i < 2; i++) {
+      const [cx, cy] = SEL_CENTERS[i];
+      if (mx >= cx - SEL_BOX_W / 2 && mx <= cx + SEL_BOX_W / 2 &&
+          my >= cy - SEL_BOX_H / 2 && my <= cy + SEL_BOX_H / 2) {
+        selectedChar = i;
+        reset();
+        state = "start";
+        return;
+      }
+    }
+    return;
+  }
+  onKeyAction();
+}
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space")      { e.preventDefault(); onKeyAction(); }
+  if (e.code === "ArrowLeft"  && state === "select") { selectedChar = 0; }
+  if (e.code === "ArrowRight" && state === "select") { selectedChar = 1; }
+  if (e.code === "KeyC"       && state === "dead")   { state = "select"; }
+});
+
+canvas.addEventListener("mousedown", e => {
+  const r  = canvas.getBoundingClientRect();
+  const mx = (e.clientX - r.left) * (W / r.width);
+  const my = (e.clientY - r.top)  * (H / r.height);
+  onMouseDown(mx, my);
+});
+
+canvas.addEventListener("touchstart", e => {
+  e.preventDefault();
+  const r  = canvas.getBoundingClientRect();
+  const mx = (e.touches[0].clientX - r.left) * (W / r.width);
+  const my = (e.touches[0].clientY - r.top)  * (H / r.height);
+  onMouseDown(mx, my);
+}, { passive: false });
 
 // ---------------------------------------------------------------------------
 // Update
@@ -462,9 +579,65 @@ function checkCollision() {
 }
 
 // ---------------------------------------------------------------------------
+// Character select screen
+// ---------------------------------------------------------------------------
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x,     y + r);
+  ctx.arcTo(x,     y,     x + r, y,         r);
+  ctx.closePath();
+}
+
+function drawSelectScreen() {
+  drawBg();  // animated background (score=0 → morning palette)
+
+  // Dim overlay
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(0, 0, W, H);
+
+  drawText("CHOOSE YOUR CHARACTER", 26, W / 2, 95);
+
+  for (let i = 0; i < 2; i++) {
+    const [cx, cy] = SEL_CENTERS[i];
+    const bx = cx - SEL_BOX_W / 2;
+    const by = cy - SEL_BOX_H / 2;
+
+    // Box fill
+    ctx.fillStyle = i === selectedChar ? "rgba(255,215,0,0.12)" : "rgba(255,255,255,0.07)";
+    roundRect(bx, by, SEL_BOX_W, SEL_BOX_H, 12);
+    ctx.fill();
+
+    // Box border
+    ctx.strokeStyle = i === selectedChar ? "#ffd700" : "rgba(255,255,255,0.28)";
+    ctx.lineWidth   = i === selectedChar ? 3 : 1.5;
+    roundRect(bx, by, SEL_BOX_W, SEL_BOX_H, 12);
+    ctx.stroke();
+
+    // Sprite preview at 2.5×
+    const sw = BIRD_W * 2.5, sh = BIRD_H * 2.5;
+    ctx.drawImage(CHAR_SPRITES[i], cx - sw / 2, by + 14, sw, sh);
+
+    // Character name
+    drawText(CHAR_NAMES[i], 21, cx, by + SEL_BOX_H - 13);
+  }
+
+  drawText("← → to browse   SPACE to play", 17, W / 2, 370);
+  drawText("— or click a character —",       15, W / 2, 394);
+}
+
+// ---------------------------------------------------------------------------
 // Draw
 // ---------------------------------------------------------------------------
 function draw() {
+  if (state === "select") { drawSelectScreen(); return; }
+
   // Sky + mountains + trees (everything behind pipes)
   drawBg();
 
@@ -495,10 +668,11 @@ function draw() {
       drawText("FLAPPY POODLE", 36, W / 2, H / 2 - 40);
       drawText("SPACE or Tap to start", 22, W / 2, H / 2 + 20);
     } else {
-      drawText("GAME OVER",              36, W / 2, H / 2 - 70);
-      drawText(`Score: ${score}`,        22, W / 2, H / 2);
-      drawText(`Best:  ${highScore}`,    22, W / 2, H / 2 + 36);
-      drawText("SPACE or Tap to restart", 20, W / 2, H / 2 + 90);
+      drawText("GAME OVER",               36, W / 2, H / 2 - 70);
+      drawText(`Score: ${score}`,         22, W / 2, H / 2);
+      drawText(`Best:  ${highScore}`,     22, W / 2, H / 2 + 36);
+      drawText("SPACE or Tap to restart", 20, W / 2, H / 2 + 88);
+      drawText("C — change character",    16, W / 2, H / 2 + 115);
     }
   }
 }
