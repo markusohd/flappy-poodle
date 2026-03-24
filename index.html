@@ -492,7 +492,7 @@ function onKeyAction() {
   } else if (state === "playing") {
     bird.flap();
   } else if (state === "dead") {
-    reset(); state = "playing";
+    state = "select";
   }
 }
 
@@ -637,8 +637,7 @@ function drawSelectScreen() {
     drawText(CHAR_NAMES[i], 21, cx, by + SEL_BOX_H - 13);
   }
 
-  drawText("← → to browse   SPACE to play", 17, W / 2, 370);
-  drawText("— or click a character —",       15, W / 2, 394);
+  drawText("Tap a character to play", 18, W / 2, 382);
 }
 
 // ---------------------------------------------------------------------------
@@ -675,13 +674,12 @@ function draw() {
 
     if (state === "start") {
       drawText("FLAPPY POODLE", 36, W / 2, H / 2 - 40);
-      drawText("SPACE or Tap to start", 22, W / 2, H / 2 + 20);
+      drawText("Tap to start", 22, W / 2, H / 2 + 20);
     } else {
-      drawText("GAME OVER",               36, W / 2, H / 2 - 70);
-      drawText(`Score: ${score}`,         22, W / 2, H / 2);
-      drawText(`Best:  ${highScore}`,     22, W / 2, H / 2 + 36);
-      drawText("SPACE or Tap to restart", 20, W / 2, H / 2 + 88);
-      drawText("C — change character",    16, W / 2, H / 2 + 115);
+      drawText("GAME OVER",           36, W / 2, H / 2 - 60);
+      drawText(`Score: ${score}`,     22, W / 2, H / 2 + 10);
+      drawText(`Best:  ${highScore}`, 22, W / 2, H / 2 + 46);
+      drawText("Tap to continue",     20, W / 2, H / 2 + 96);
     }
   }
 }

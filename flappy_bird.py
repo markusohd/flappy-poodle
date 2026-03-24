@@ -264,8 +264,7 @@ class Game:
                 elif self.state == "playing":
                     self.bird.flap()
                 elif self.state == "dead":
-                    self._reset()
-                    self.state = "playing"
+                    self.state = "select"
 
     # -- Update --------------------------------------------------------------
     def _update(self):
@@ -364,10 +363,8 @@ class Game:
 
             self._draw_text(self.char_names[i], self.font_sm, cx, by + bh - 14)
 
-        self._draw_text("<-  ->  to browse   SPACE to play",
-                        self.font_sm, SCREEN_W // 2, 378)
-        self._draw_text("or click a character",
-                        self.font_xs, SCREEN_W // 2, 408)
+        self._draw_text("Tap a character to play",
+                        self.font_sm, SCREEN_W // 2, 390)
 
     def _draw(self):
         if self.state == "select":
@@ -404,7 +401,7 @@ class Game:
         if self.state == "start":
             self._draw_overlay()
             self._draw_text("FLAPPY POODLE", self.font_md, SCREEN_W // 2, SCREEN_H // 2 - 40)
-            self._draw_text("SPACE or Click to start", self.font_sm, SCREEN_W // 2, SCREEN_H // 2 + 20)
+            self._draw_text("Tap to start", self.font_sm, SCREEN_W // 2, SCREEN_H // 2 + 20)
 
         # --- Game over screen ---
         if self.state == "dead":
@@ -412,8 +409,7 @@ class Game:
             self._draw_text("GAME OVER",  self.font_md, SCREEN_W // 2, SCREEN_H // 2 - 70)
             self._draw_text(f"Score: {self.score}",      self.font_sm, SCREEN_W // 2, SCREEN_H // 2)
             self._draw_text(f"Best:  {self.high_score}", self.font_sm, SCREEN_W // 2, SCREEN_H // 2 + 36)
-            self._draw_text("SPACE or Click to restart", self.font_sm, SCREEN_W // 2, SCREEN_H // 2 + 88)
-            self._draw_text("C — change character",      self.font_xs, SCREEN_W // 2, SCREEN_H // 2 + 118)
+            self._draw_text("Tap to continue",           self.font_sm, SCREEN_W // 2, SCREEN_H // 2 + 96)
 
         pygame.display.flip()
 
