@@ -307,6 +307,129 @@ function drawText(text, size, x, y, center = true) {
 }
 
 // ---------------------------------------------------------------------------
+// Audio (Web Audio API — all sounds synthesized, no external files)
+// ---------------------------------------------------------------------------
+const audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+const masterGain = audioCtx.createGain();
+masterGain.gain.value = 1.0;
+masterGain.connect(audioCtx.destination);
+
+function resumeAudio() {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+// Pillow (toy poodle) — sharp high "yip"
+function playPillowBark() {
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const g   = audioCtx.createGain();
+  osc.connect(g); g.connect(masterGain);
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(1100, t);
+  osc.frequency.exponentialRampToValueAtTime(700,  t + 0.05);
+  osc.frequency.exponentialRampToValueAtTime(500,  t + 0.12);
+  g.gain.setValueAtTime(0.15, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+  osc.start(t); osc.stop(t + 0.15);
+}
+
+// Blanket (maltipoo) — softer, rounder "woof"
+function playBlanketBark() {
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const g   = audioCtx.createGain();
+  osc.connect(g); g.connect(masterGain);
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(380, t);
+  osc.frequency.exponentialRampToValueAtTime(230, t + 0.10);
+  osc.frequency.exponentialRampToValueAtTime(170, t + 0.22);
+  g.gain.setValueAtTime(0.20, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  osc.start(t); osc.stop(t + 0.26);
+}
+
+function playBark() {
+  resumeAudio();
+  if (selectedChar === 0) playPillowBark();
+  else playBlanketBark();
+}
+
+// Crash — Super Mario death jingle (NES-style square wave)
+function playCrash() {
+  resumeAudio();
+  const t = audioCtx.currentTime;
+  // Quick ascending pickup, then descending chromatic run
+  const seq = [
+    [659, 0.00, 0.07],  // E5
+    [523, 0.08, 0.07],  // C5
+    [392, 0.16, 0.08],  // G4  (brief rest before descent)
+    [330, 0.30, 0.09],  // E4
+    [311, 0.40, 0.09],  // Eb4
+    [294, 0.50, 0.09],  // D4
+    [277, 0.60, 0.09],  // Db4
+    [262, 0.70, 0.09],  // C4
+    [247, 0.80, 0.09],  // B3
+    [233, 0.90, 0.09],  // Bb3
+    [220, 1.00, 0.16],  // A3 — final fall
+  ];
+  for (const [freq, offset, dur] of seq) {
+    const osc = audioCtx.createOscillator();
+    const g   = audioCtx.createGain();
+    osc.connect(g); g.connect(masterGain);
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    const s = t + offset;
+    g.gain.setValueAtTime(0.18, s);
+    g.gain.exponentialRampToValueAtTime(0.001, s + dur);
+    osc.start(s); osc.stop(s + dur + 0.01);
+  }
+}
+
+// Background music — minimal C-major arpeggio loop, very soft
+const BG_SEQ = [261.6, 329.6, 392.0, 329.6, 261.6, 329.6, 392.0, 329.6];
+const BG_DUR = 0.45;   // seconds per note
+const BG_VOL = 0.04;
+let   bgPlaying = false;
+let   bgTimer   = null;
+
+function scheduleBgNote(freq, startTime) {
+  const osc = audioCtx.createOscillator();
+  const g   = audioCtx.createGain();
+  osc.connect(g); g.connect(masterGain);
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0,      startTime);
+  g.gain.linearRampToValueAtTime(BG_VOL,  startTime + 0.05);
+  g.gain.setValueAtTime(BG_VOL,           startTime + BG_DUR * 0.70);
+  g.gain.linearRampToValueAtTime(0,       startTime + BG_DUR * 0.92);
+  osc.start(startTime);
+  osc.stop(startTime + BG_DUR);
+}
+
+function scheduleBgBar(startTime) {
+  if (!bgPlaying) return;
+  const barDur = BG_SEQ.length * BG_DUR;
+  for (let i = 0; i < BG_SEQ.length; i++) {
+    scheduleBgNote(BG_SEQ[i], startTime + i * BG_DUR);
+  }
+  // Re-schedule 100 ms before the bar ends so there's no gap
+  bgTimer = setTimeout(() => scheduleBgBar(startTime + barDur),
+                       (barDur - 0.1) * 1000);
+}
+
+function startBgMusic() {
+  if (bgPlaying) return;
+  bgPlaying = true;
+  resumeAudio();
+  scheduleBgBar(audioCtx.currentTime + 0.15);
+}
+
+function stopBgMusic() {
+  bgPlaying = false;
+  if (bgTimer) { clearTimeout(bgTimer); bgTimer = null; }
+}
+
+// ---------------------------------------------------------------------------
 // Time-of-day background system
 // ---------------------------------------------------------------------------
 const TOD_TRANS = 8; // score-point transition window at each phase boundary
@@ -489,9 +612,12 @@ function onKeyAction() {
     reset(); state = "start";
   } else if (state === "start") {
     state = "playing";
+    startBgMusic();
   } else if (state === "playing") {
     bird.flap();
+    playBark();
   } else if (state === "dead") {
+    stopBgMusic();
     state = "select";
   }
 }
@@ -572,6 +698,8 @@ function update() {
   if (checkCollision()) {
     highScore = Math.max(highScore, score);
     state = "dead";
+    stopBgMusic();
+    playCrash();
   }
 }
 
