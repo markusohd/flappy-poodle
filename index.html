@@ -44,7 +44,7 @@ const GRAVITY       = 0.5;
 const FLAP_STRENGTH = -9;
 const MAX_FALL      = 10;
 const PIPE_W        = 60;
-const PIPE_GAP      = 160;
+const PIPE_GAP      = 220;
 const PIPE_SPEED    = 3;
 const PIPE_SPACING  = 220;
 const PIPE_CAP_H    = 16;
@@ -289,6 +289,57 @@ class Pipe {
 }
 
 // ---------------------------------------------------------------------------
+// Asteroid (replaces Pipe in Outer Space)
+// ---------------------------------------------------------------------------
+class Asteroid {
+  constructor(x) {
+    this.x      = x;
+    this.gap    = Math.max(curGap, 120);
+    this.gapTop = Math.floor(Math.random() * (H - GROUND_H - this.gap - 80 - 100)) + 100;
+    this.scored = false;
+    this._seed  = Math.floor(Math.random() * 9999);
+  }
+  _hash(n) { return ((n * 1664525 + 1013904223) >>> 0) / 4294967296; }
+  update() { this.x -= curSpeed; }
+  isOffScreen() { return this.x + PIPE_W + 10 < 0; }
+  getRects() {
+    return [
+      { x: this.x - 5, y: 0,                      w: PIPE_W + 10, h: this.gapTop },
+      { x: this.x - 5, y: this.gapTop + this.gap,  w: PIPE_W + 10, h: H - this.gapTop - this.gap },
+    ];
+  }
+  _drawRock(x, y, w, h, jagged) {
+    const segs = 8, sw = w / segs;
+    ctx.beginPath();
+    if (jagged === "bottom") {
+      ctx.moveTo(x, y); ctx.lineTo(x+w, y); ctx.lineTo(x+w, y+h);
+      for (let i = segs; i >= 0; i--) {
+        const jy = y + h - (this._hash(this._seed + i) * 18 + 4);
+        ctx.lineTo(x + i*sw, jy);
+      }
+    } else {
+      ctx.moveTo(x, y+h); ctx.lineTo(x+w, y+h); ctx.lineTo(x+w, y);
+      for (let i = segs; i >= 0; i--) {
+        const jy = y + (this._hash(this._seed + i + 100) * 18 + 4);
+        ctx.lineTo(x + i*sw, jy);
+      }
+    }
+    ctx.closePath();
+    ctx.fillStyle = "#7e7e88"; ctx.fill();
+    ctx.strokeStyle = "#555560"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.beginPath(); ctx.arc(x+w*0.35, y+h*0.45, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x+w*0.65, y+h*0.32, 3, 0, Math.PI*2); ctx.fill();
+  }
+  draw() {
+    if (this.gapTop > 0) this._drawRock(this.x-5, 0, PIPE_W+10, this.gapTop, "bottom");
+    const botY = this.gapTop + this.gap;
+    const botH = H - botY;
+    if (botH > 0) this._drawRock(this.x-5, botY, PIPE_W+10, botH, "top");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function rectsOverlap(a, b) {
@@ -430,72 +481,149 @@ function stopBgMusic() {
 }
 
 // ---------------------------------------------------------------------------
-// Time-of-day background system
+// World-progression background system
 // ---------------------------------------------------------------------------
-const TOD_TRANS = 8; // score-point transition window at each phase boundary
-
-// Returns [currentPhase (0=morning,1=afternoon,2=night), nextPhase, blend t 0..1]
-function getBlend() {
-  const cycle  = score % 150;
-  const phase  = Math.floor(cycle / 50);
-  const within = cycle % 50;
-  if (within < 50 - TOD_TRANS) return [phase, phase, 0];
-  return [phase, (phase + 1) % 3, (within - (50 - TOD_TRANS)) / TOD_TRANS];
-}
+const WORLD_SIZE  = 75;
+const TOD_SIZE    = 25;
+const BLEND_WIN   = 5;
+const SPACE_START = 375;
+const WORLD_BASE_GAPS = [220, 190, 165, 145, 130, 0];
+const WORLD_NAMES = ["Earth","Great Wall","Tokyo","Paris","Manila","Space"];
 
 function lerp(a, b, t)    { return a + (b - a) * t; }
 function lerpC(a, b, t)   { return [lerp(a[0],b[0],t)|0, lerp(a[1],b[1],t)|0, lerp(a[2],b[2],t)|0]; }
 function toRgb([r,g,b])   { return `rgb(${r},${g},${b})`; }
 function toRgba([r,g,b],a){ return `rgba(${r},${g},${b},${+a.toFixed(3)})`; }
 
-// Color tables indexed by phase [0=morning, 1=afternoon, 2=night]
-const COLS = {
-  skyTop:  [[55,130,210],  [215,75,15],   [8,12,30]],
-  skyBot:  [[130,200,235], [250,155,55],  [18,32,72]],
-  farMtn:  [[120,155,190], [185,105,55],  [22,38,52]],
-  nearMtn: [[85,125,85],   [115,82,25],   [8,20,8]],
-  tree:    [[30,75,25],    [15,45,12],    [4,10,4]],
-  ground:  [[210,170,90],  [195,135,55],  [130,100,42]],
-  gndLine: [[180,140,60],  [155,105,35],  [95,72,25]],
-};
-
-function getPal() {
-  const [p, n, t] = getBlend();
-  const lc = key => t === 0 ? COLS[key][p] : lerpC(COLS[key][p], COLS[key][n], t);
-  const nightAmt = t === 0 ? (p === 2 ? 1 : 0) : n === 2 ? t : p === 2 ? 1 - t : 0;
-  const aftnAmt  = t === 0 ? (p === 1 ? 1 : 0) : n === 1 ? t : p === 1 ? 1 - t : 0;
-  return {
-    skyTop: lc('skyTop'), skyBot: lc('skyBot'),
-    farMtn: lc('farMtn'), nearMtn: lc('nearMtn'),
-    tree: lc('tree'), ground: lc('ground'), gndLine: lc('gndLine'),
-    nightAmt, aftnAmt,
-  };
-}
-
-// Static background geometry (coordinates for 400×600 canvas, ground at y=520)
-const FAR_PTS  = [[0,520],[40,315],[92,340],[155,276],[216,306],[276,289],[337,316],[392,297],[400,520]];
-const NEAR_PTS = [[0,520],[66,364],[128,393],[194,349],[255,381],[320,358],[375,385],[400,406],[400,520]];
-
-// Trees: [centerX, height, trunkWidth]
-const TREES = [
-  [12,72,9],[50,54,7],[90,88,10],[135,64,8],[180,95,11],
-  [226,58,7],[266,84,10],[307,69,8],[345,78,9],[381,56,7],
+const WORLD_COLS = [
+  // 0: Earth
+  { skyTop:[[55,130,210],[215,75,15],[18,28,62]], skyBot:[[130,200,235],[250,155,55],[28,45,90]],
+    farMtn:[[120,155,190],[185,105,55],[32,50,72]], nearMtn:[[85,125,85],[115,82,25],[15,32,18]],
+    tree:[[30,75,25],[15,45,12],[8,18,8]], ground:[[210,170,90],[195,135,55],[130,100,42]],
+    gndLine:[[180,140,60],[155,105,35],[95,72,25]] },
+  // 1: Great Wall of China
+  { skyTop:[[160,195,220],[210,120,30],[35,25,55]], skyBot:[[210,225,195],[240,165,70],[60,42,80]],
+    farMtn:[[140,155,110],[175,120,55],[45,38,32]], nearMtn:[[110,95,60],[145,100,40],[38,28,18]],
+    tree:[[85,70,30],[100,75,20],[35,25,10]], ground:[[195,170,120],[185,145,85],[115,90,55]],
+    gndLine:[[160,135,90],[150,115,60],[85,65,35]] },
+  // 2: Tokyo
+  { skyTop:[[175,155,210],[100,165,225],[65,45,115]], skyBot:[[230,195,225],[175,215,240],[110,75,155]],
+    farMtn:[[210,210,220],[220,225,235],[80,70,110]], nearMtn:[[140,140,155],[160,165,175],[50,50,75]],
+    tree:[[195,55,45],[210,70,30],[155,35,35]],
+    ground:[[155,160,165],[165,168,172],[80,82,90]], gndLine:[[120,125,130],[130,132,138],[55,58,65]] },
+  // 3: Paris
+  { skyTop:[[185,205,230],[210,170,90],[38,42,90]], skyBot:[[230,235,215],[245,210,130],[65,60,120]],
+    farMtn:[[185,195,175],[200,185,140],[65,65,80]], nearMtn:[[195,185,165],[210,190,145],[75,68,80]],
+    tree:[[45,110,50],[35,90,30],[18,50,18]],
+    ground:[[220,210,185],[225,200,155],[130,115,95]], gndLine:[[190,175,145],[195,165,115],[100,88,68]] },
+  // 4: Manila
+  { skyTop:[[50,155,230],[235,110,20],[205,65,15]], skyBot:[[130,210,245],[255,185,60],[245,120,45]],
+    farMtn:[[55,140,85],[100,130,55],[120,70,35]], nearMtn:[[35,110,55],[75,105,35],[95,55,25]],
+    tree:[[25,105,30],[20,85,20],[15,65,15]],
+    ground:[[185,125,75],[200,135,65],[165,90,45]], gndLine:[[150,95,50],[165,100,40],[130,65,28]] },
 ];
 
-// Clouds: arrays of [cx, cy, rx, ry]
+function getSceneInfo() {
+  const s = Math.max(score, 0);
+  if (s >= SPACE_START) return { worldIdx:5, todPhase:0, nextTodPhase:0, todBlend:0, worldBlend:0, nextWorldIdx:5 };
+  const worldIdx    = Math.floor(s / WORLD_SIZE);
+  const withinWorld = s % WORLD_SIZE;
+  const todPhase    = Math.floor(withinWorld / TOD_SIZE);
+  const withinTod   = withinWorld % TOD_SIZE;
+  let todBlend = 0, nextTodPhase = todPhase;
+  if (withinTod >= TOD_SIZE - BLEND_WIN) {
+    todBlend     = (withinTod - (TOD_SIZE - BLEND_WIN)) / BLEND_WIN;
+    nextTodPhase = todPhase === 2 ? 0 : todPhase + 1;
+  }
+  let worldBlend = 0, nextWorldIdx = worldIdx;
+  if (withinWorld >= WORLD_SIZE - BLEND_WIN) {
+    worldBlend   = (withinWorld - (WORLD_SIZE - BLEND_WIN)) / BLEND_WIN;
+    nextWorldIdx = Math.min(worldIdx + 1, 5);
+  }
+  return { worldIdx, todPhase, nextTodPhase, todBlend, worldBlend, nextWorldIdx };
+}
+
+function getPalForWorld(wIdx, tod, nextTod, t) {
+  const tbl = WORLD_COLS[wIdx];
+  const lc  = key => t === 0 ? tbl[key][tod] : lerpC(tbl[key][tod], tbl[key][nextTod], t);
+  const nightAmt = t === 0 ? (tod===2?1:0) : nextTod===2?t : tod===2?1-t:0;
+  const aftnAmt  = t === 0 ? (tod===1?1:0) : nextTod===1?t : tod===1?1-t:0;
+  return { skyTop:lc('skyTop'), skyBot:lc('skyBot'), farMtn:lc('farMtn'), nearMtn:lc('nearMtn'),
+           tree:lc('tree'), ground:lc('ground'), gndLine:lc('gndLine'), nightAmt, aftnAmt, worldIdx:wIdx };
+}
+
+function getSpacePal() {
+  return { skyTop:[5,5,18], skyBot:[8,10,30], farMtn:[0,0,0], nearMtn:[0,0,0],
+           tree:[0,0,0], ground:[72,72,78], gndLine:[52,52,60],
+           nightAmt:1, aftnAmt:0, worldIdx:5, worldBlend:0, nextWorldIdx:5 };
+}
+
+function getPal() {
+  const si = getSceneInfo();
+  if (si.worldIdx === 5) return getSpacePal();
+  const { worldIdx, todPhase, nextTodPhase, todBlend, worldBlend, nextWorldIdx } = si;
+  const cur = getPalForWorld(worldIdx, todPhase, nextTodPhase, todBlend);
+  if (worldBlend === 0) return { ...cur, worldBlend:0, nextWorldIdx };
+  const ni  = nextWorldIdx === 5 ? 4 : nextWorldIdx;
+  const nxt = getPalForWorld(ni, 0, 0, 0);
+  const lk  = key => lerpC(cur[key], nxt[key], worldBlend);
+  return { skyTop:lk('skyTop'), skyBot:lk('skyBot'), farMtn:lk('farMtn'), nearMtn:lk('nearMtn'),
+           tree:lk('tree'), ground:lk('ground'), gndLine:lk('gndLine'),
+           nightAmt:lerp(cur.nightAmt,nxt.nightAmt,worldBlend),
+           aftnAmt:lerp(cur.aftnAmt,nxt.aftnAmt,worldBlend),
+           worldIdx, worldBlend, nextWorldIdx };
+}
+
+// ---------------------------------------------------------------------------
+// Background geometry
+// ---------------------------------------------------------------------------
+// Earth
+const EARTH_FAR_PTS  = [[0,520],[40,315],[92,340],[155,276],[216,306],[276,289],[337,316],[392,297],[400,520]];
+const EARTH_NEAR_PTS = [[0,520],[66,364],[128,393],[194,349],[255,381],[320,358],[375,385],[400,406],[400,520]];
+const EARTH_TREES    = [[12,72,9],[50,54,7],[90,88,10],[135,64,8],[180,95,11],[226,58,7],[266,84,10],[307,69,8],[345,78,9],[381,56,7]];
+// Clouds (Earth + Great Wall)
 const CLOUDS = [
   [[65,102,38,19],[98,93,30,17],[127,104,32,18]],
   [[219,130,42,21],[257,121,33,19],[286,131,36,20]],
   [[339,93,32,16],[363,85,25,14],[385,94,28,15]],
 ];
-
-// Pre-generated star positions [x, y, radius]
+// Stars (Earth evening / shared)
 const STARS = Array.from({length:32}, (_,i) => [
-  (i * 97  + 31) % 400,
-  (i * 137 + 53) % 310,
-  i % 5 === 0 ? 1.5 : 1,
+  (i*97+31)%400, (i*137+53)%310, i%5===0?1.5:1,
 ]);
+// Great Wall
+const WALL_FAR_PTS   = [[0,520],[0,370],[55,355],[120,340],[185,325],[240,335],[310,318],[370,330],[400,340],[400,520]];
+const WALL_MERLONS   = Array.from({length:20}, (_,i) => [i*20+2, 12]);
+const WALL_MERLON_Y  = 416, WALL_MERLON_H = 14;
+const WALL_TOWERS    = [[60,380,40,65],[200,370,44,75],[350,383,40,62]];
+const WALL_TOWER_ROOFS = [[60,352,28],[200,340,32],[350,355,28]];
+const WALL_TREES     = [[20,445,55,8],[100,445,42,-6],[160,445,60,10],[280,445,48,-8],[370,445,52,7]];
+// Tokyo
+const FUJI_PTS       = [[130,440],[370,440],[250,235]];
+const FUJI_SNOW_PTS  = [[222,290],[278,290],[250,235]];
+const TOKYO_BUILDINGS= [[0,395,45,45],[42,360,38,80],[78,382,30,58],[105,345,50,95],[152,372,35,68],[184,388,28,52],[245,362,42,78],[285,378,35,62],[318,358,48,82],[364,382,36,58]];
+const TOKYO_TOWER    = { tipX:210,tipY:238, midLX:197,midRX:223,midY:338, baseLX:185,baseRX:235,baseY:445, platX:193,platY:308,platW:34,platH:8 };
+// Paris
+const PARIS_FAR_PTS  = [[0,520],[0,400],[70,388],[150,372],[230,380],[310,370],[390,382],[400,385],[400,520]];
+const PARIS_NEAR_PTS = [[0,520],[0,420],[80,415],[180,418],[280,413],[380,418],[400,420],[400,520]];
+const EIFFEL         = { tipX:200,tipY:215, t1LX:190,t1RX:210,t1Y:270, t2LX:178,t2RX:222,t2Y:330, t3LX:162,t3RX:238,t3Y:388, baseLX:148,baseRX:252,baseY:435 };
+const PARIS_BUILDINGS= [[0,390,90,12,[15,40,65]],[88,398,70,10,[20,50]],[318,395,82,12,[333,358,390]]];
+const PARIS_TREES    = [[30,445,38,14],[80,445,32,12],[130,445,40,15],[272,445,36,13],[328,445,38,14],[370,445,34,13]];
+// Manila
+const MANILA_FAR_PTS = [[0,520],[0,365],[55,352],[115,338],[175,345],[235,330],[295,340],[355,328],[400,335],[400,520]];
+const MANILA_NEAR_PTS= [[0,520],[0,415],[70,405],[155,410],[240,403],[325,408],[400,405],[400,520]];
+const MANILA_BUILDINGS=[[0,408,55,32],[52,400,65,40],[115,410,40,30],[155,395,80,45],[232,408,50,32],[280,414,45,26],[322,402,60,38],[380,409,20,31]];
+const MANILA_PALMS   = [[18,455,70,28],[65,455,55,22],[118,455,80,30],[175,455,62,25],[240,455,75,28],[295,455,58,22],[348,455,72,27],[390,455,50,20]];
+// Space
+const SPACE_STARS    = Array.from({length:64}, (_,i) => [(i*89+17)%400,(i*131+43)%510,i%7===0?2:i%3===0?1.5:1]);
+const NEBULAE        = [[80,160,90,[120,60,180],0.12],[300,100,110,[20,150,160],0.10],[180,280,75,[200,40,140],0.09]];
+const SPACE_PLANET   = {cx:320,cy:115,r:42};
+const SPACE_MOON     = {cx:72,cy:78,r:18};
+const SPACE_GROUND_PTS=[[0,520],[0,508],[22,498],[45,510],[68,495],[95,505],[120,492],[148,508],[172,496],[198,510],[225,500],[250,514],[278,498],[305,508],[330,494],[358,510],[382,500],[400,508],[400,520]];
 
+// ---------------------------------------------------------------------------
+// Draw helpers
+// ---------------------------------------------------------------------------
 function fillPoly(pts, color) {
   ctx.beginPath();
   pts.forEach(([x,y], i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y));
@@ -504,83 +632,246 @@ function fillPoly(pts, color) {
   ctx.fill();
 }
 
-function drawBg() {
-  const p  = getPal();
+function drawSky(p) {
   const gY = H - GROUND_H;
-
-  // Sky gradient
   const grad = ctx.createLinearGradient(0, 0, 0, gY);
   grad.addColorStop(0, toRgb(p.skyTop));
   grad.addColorStop(1, toRgb(p.skyBot));
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, gY);
+}
 
-  // Stars + crescent moon (night)
+function drawCelestials(p) {
   if (p.nightAmt > 0.01) {
     const now = Date.now() / 900;
     for (const [sx, sy, sr] of STARS) {
       const twinkle = 0.55 + 0.45 * Math.sin(now + sx * 0.05);
-      ctx.beginPath();
-      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-      ctx.fillStyle = toRgba([255,255,235], p.nightAmt * twinkle);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fillStyle = toRgba([255,255,235], p.nightAmt * twinkle); ctx.fill();
     }
-    ctx.save();
-    ctx.globalAlpha = p.nightAmt;
+    ctx.save(); ctx.globalAlpha = p.nightAmt;
     ctx.beginPath(); ctx.arc(308, 68, 18, 0, Math.PI * 2);
     ctx.fillStyle = "#fffde0"; ctx.fill();
-    ctx.beginPath(); ctx.arc(318, 63, 16, 0, Math.PI * 2); // crescent cutout
+    ctx.beginPath(); ctx.arc(318, 63, 16, 0, Math.PI * 2);
     ctx.fillStyle = toRgb(p.skyTop); ctx.fill();
     ctx.restore();
   }
-
-  // Sun (morning & afternoon)
   if (p.nightAmt < 0.99) {
-    const sx = lerp(330, 355, p.aftnAmt);
-    const sy = lerp(68,  155, p.aftnAmt);
+    const sx = lerp(330, 355, p.aftnAmt), sy = lerp(68, 155, p.aftnAmt);
     const sc = lerpC([255,228,80], [255,70,10], p.aftnAmt);
-    ctx.save();
-    ctx.globalAlpha = 1 - p.nightAmt;
+    ctx.save(); ctx.globalAlpha = 1 - p.nightAmt;
     const grd = ctx.createRadialGradient(sx, sy, 4, sx, sy, 38);
-    grd.addColorStop(0, toRgba(sc, 0.65));
-    grd.addColorStop(1, toRgba(sc, 0));
-    ctx.fillStyle = grd;
-    ctx.fillRect(sx - 38, sy - 38, 76, 76);
-    ctx.beginPath(); ctx.arc(sx, sy, 20, 0, Math.PI * 2);
-    ctx.fillStyle = toRgb(sc); ctx.fill();
-    ctx.restore();
+    grd.addColorStop(0, toRgba(sc, 0.65)); grd.addColorStop(1, toRgba(sc, 0));
+    ctx.fillStyle = grd; ctx.fillRect(sx-38, sy-38, 76, 76);
+    ctx.beginPath(); ctx.arc(sx, sy, 20, 0, Math.PI*2);
+    ctx.fillStyle = toRgb(sc); ctx.fill(); ctx.restore();
   }
+}
 
-  // Clouds (day, tinted orange in afternoon)
-  if (p.nightAmt < 0.99) {
-    const cc = lerpC([238,244,255], [255,192,120], p.aftnAmt);
-    ctx.save();
-    ctx.globalAlpha = (1 - p.nightAmt) * 0.82;
-    for (const cloud of CLOUDS) {
-      for (const [cx, cy, rx, ry] of cloud) {
-        ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fillStyle = toRgb(cc); ctx.fill();
-      }
+function drawClouds(p, worldBlend, nextWorldIdx) {
+  if (p.nightAmt >= 0.99 || p.worldIdx > 1) return;
+  let alpha = (1 - p.nightAmt) * 0.82;
+  if (p.worldIdx === 1 && worldBlend > 0 && nextWorldIdx >= 2) alpha *= (1 - worldBlend);
+  if (alpha < 0.01) return;
+  const cc = lerpC([238,244,255], [255,192,120], p.aftnAmt);
+  ctx.save(); ctx.globalAlpha = alpha;
+  for (const cloud of CLOUDS)
+    for (const [cx,cy,rx,ry] of cloud) {
+      ctx.beginPath(); ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+      ctx.fillStyle = toRgb(cc); ctx.fill();
+    }
+  ctx.restore();
+}
+
+function drawEarth(p) {
+  fillPoly(EARTH_FAR_PTS, toRgb(p.farMtn));
+  fillPoly(EARTH_NEAR_PTS, toRgb(p.nearMtn));
+  const gY = H - GROUND_H;
+  for (const [tx,th,tw] of EARTH_TREES) {
+    ctx.fillStyle = toRgb(p.tree);
+    ctx.fillRect(tx - tw/2, gY - th*0.30, tw, th*0.30);
+    [[1,0],[0.72,0.24]].forEach(([scale,yOff]) => {
+      ctx.beginPath();
+      ctx.moveTo(tx, gY - th*scale);
+      ctx.lineTo(tx - th*0.44*scale, gY - th*0.28 + th*yOff);
+      ctx.lineTo(tx + th*0.44*scale, gY - th*0.28 + th*yOff);
+      ctx.closePath(); ctx.fill();
+    });
+  }
+}
+
+function drawGreatWall(p) {
+  fillPoly(WALL_FAR_PTS, toRgb(p.farMtn));
+  for (const [cx,by,h,lean] of WALL_TREES) {
+    ctx.save(); ctx.translate(cx, by); ctx.rotate(lean * Math.PI / 180);
+    ctx.fillStyle = toRgb(lerpC(p.tree, [50,35,15], 0.5));
+    ctx.fillRect(-3, -h, 5, h);
+    ctx.fillStyle = toRgb(p.tree);
+    for (const [bx2,by2,rx,ry] of [[-8,-h+8,10,7],[4,-h+5,12,8],[0,-h-4,9,6]]) {
+      ctx.beginPath(); ctx.ellipse(bx2,by2,rx,ry,0,0,Math.PI*2); ctx.fill();
     }
     ctx.restore();
   }
-
-  // Far mountains
-  fillPoly(FAR_PTS, toRgb(p.farMtn));
-  // Near mountains
-  fillPoly(NEAR_PTS, toRgb(p.nearMtn));
-
-  // Trees (pine style, two overlapping triangle tiers)
-  for (const [tx, th, tw] of TREES) {
-    ctx.fillStyle = toRgb(p.tree);
-    ctx.fillRect(tx - tw / 2, gY - th * 0.30, tw, th * 0.30); // trunk
-    [[1, 0], [0.72, 0.24]].forEach(([scale, yOff]) => {
-      ctx.beginPath();
-      ctx.moveTo(tx,              gY - th * scale);
-      ctx.lineTo(tx - th * 0.44 * scale, gY - th * 0.28 + th * yOff);
-      ctx.lineTo(tx + th * 0.44 * scale, gY - th * 0.28 + th * yOff);
+  for (let i = 0; i < WALL_TOWERS.length; i++) {
+    const [tcx,tby,tw,th] = WALL_TOWERS[i];
+    const [rcx,rtipY,rhalf] = WALL_TOWER_ROOFS[i];
+    ctx.fillStyle = toRgb(p.nearMtn);
+    ctx.fillRect(tcx - tw/2, tby, tw, th);
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(tcx-3, tby+12, 6, 10); ctx.fillRect(tcx-3, tby+28, 6, 10);
+    for (let l = 0; l < 2; l++) {
+      const scale = 1 - l*0.35, yOff = l*14;
+      ctx.fillStyle = toRgb(lerpC(p.nearMtn, [80,55,30], 0.45));
+      ctx.beginPath(); ctx.moveTo(rcx, rtipY+yOff);
+      ctx.lineTo(rcx - rhalf*scale, rtipY+yOff+16);
+      ctx.lineTo(rcx + rhalf*scale, rtipY+yOff+16);
       ctx.closePath(); ctx.fill();
-    });
+    }
+  }
+  ctx.fillStyle = toRgb(p.nearMtn); ctx.fillRect(0, 430, W, 15);
+  ctx.fillStyle = toRgb(lerpC(p.nearMtn, [200,180,140], 0.3));
+  for (const [mx,mw] of WALL_MERLONS) ctx.fillRect(mx, WALL_MERLON_Y, mw, WALL_MERLON_H);
+}
+
+function drawTokyo(p) {
+  fillPoly(FUJI_PTS, toRgb(p.farMtn));
+  fillPoly(FUJI_SNOW_PTS, toRgb(lerpC([235,235,240],[215,220,228], p.aftnAmt)));
+  ctx.fillStyle = toRgb(p.nearMtn);
+  for (const [bx,by,bw,bh] of TOKYO_BUILDINGS) ctx.fillRect(bx,by,bw,bh);
+  ctx.fillStyle = p.nightAmt > 0.3
+    ? `rgba(255,240,180,${+(0.5+p.nightAmt*0.4).toFixed(2)})`
+    : "rgba(255,255,220,0.22)";
+  for (const [bx,by,bw,bh] of TOKYO_BUILDINGS)
+    for (let wy=by+6; wy<by+bh-4; wy+=10)
+      for (let wx=bx+5; wx<bx+bw-4; wx+=9) ctx.fillRect(wx,wy,4,5);
+  const tt = TOKYO_TOWER;
+  ctx.fillStyle = toRgb(p.tree);
+  ctx.beginPath(); ctx.moveTo(tt.baseLX,tt.baseY); ctx.lineTo(tt.midLX,tt.midY);
+  ctx.lineTo(tt.midRX,tt.midY); ctx.lineTo(tt.baseRX,tt.baseY); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(tt.midLX,tt.midY); ctx.lineTo(tt.tipX,tt.tipY);
+  ctx.lineTo(tt.midRX,tt.midY); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = toRgb(lerpC(p.tree,[50,50,50],0.5));
+  ctx.fillRect(tt.platX,tt.platY,tt.platW,tt.platH);
+  ctx.strokeStyle = toRgb(lerpC(p.tree,[40,20,10],0.45)); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(tt.baseLX,tt.baseY); ctx.lineTo(tt.midRX,tt.midY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tt.baseRX,tt.baseY); ctx.lineTo(tt.midLX,tt.midY); ctx.stroke();
+}
+
+function drawParis(p) {
+  fillPoly(PARIS_FAR_PTS, toRgb(p.farMtn));
+  fillPoly(PARIS_NEAR_PTS, toRgb(p.nearMtn));
+  for (const [bx,roofY,bw,roofDelta,chimneys] of PARIS_BUILDINGS) {
+    ctx.fillStyle = toRgb(p.nearMtn); ctx.fillRect(bx, roofY+roofDelta, bw, 445-roofY-roofDelta);
+    ctx.fillStyle = toRgb(lerpC(p.nearMtn,[60,55,65],0.4)); ctx.fillRect(bx, roofY, bw, roofDelta);
+    ctx.fillStyle = toRgb(lerpC(p.nearMtn,[70,65,70],0.5));
+    for (const cx of chimneys) ctx.fillRect(cx-3, roofY-12, 6, 13);
+  }
+  const e = EIFFEL;
+  ctx.fillStyle = toRgb(lerpC(p.nearMtn,[45,42,50],0.7));
+  ctx.beginPath(); ctx.moveTo(e.baseLX,e.baseY); ctx.lineTo(e.t3LX,e.t3Y);
+  ctx.lineTo(e.t3LX+20,e.t3Y); ctx.lineTo(e.baseLX+28,e.baseY); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(e.baseRX,e.baseY); ctx.lineTo(e.t3RX,e.t3Y);
+  ctx.lineTo(e.t3RX-20,e.t3Y); ctx.lineTo(e.baseRX-28,e.baseY); ctx.closePath(); ctx.fill();
+  ctx.fillRect(e.t3LX, e.t3Y, e.t3RX-e.t3LX, 8);
+  ctx.beginPath(); ctx.moveTo(e.t3LX,e.t3Y); ctx.lineTo(e.t2LX,e.t2Y);
+  ctx.lineTo(e.t2RX,e.t2Y); ctx.lineTo(e.t3RX,e.t3Y); ctx.closePath(); ctx.fill();
+  ctx.fillRect(e.t2LX-4, e.t2Y, e.t2RX-e.t2LX+8, 6);
+  ctx.beginPath(); ctx.moveTo(e.t2LX,e.t2Y); ctx.lineTo(e.t1LX,e.t1Y);
+  ctx.lineTo(e.t1RX,e.t1Y); ctx.lineTo(e.t2RX,e.t2Y); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(e.t1LX,e.t1Y); ctx.lineTo(e.tipX,e.tipY);
+  ctx.lineTo(e.t1RX,e.t1Y); ctx.closePath(); ctx.fill();
+  for (const [tcx,tby,trH,ballR] of PARIS_TREES) {
+    ctx.fillStyle = toRgb(lerpC(p.tree,[60,40,20],0.6));
+    ctx.fillRect(tcx-2, tby-trH, 4, trH);
+    ctx.beginPath(); ctx.arc(tcx, tby-trH, ballR, 0, Math.PI*2);
+    ctx.fillStyle = toRgb(p.tree); ctx.fill();
+  }
+}
+
+function drawManila(p) {
+  fillPoly(MANILA_FAR_PTS, toRgb(p.farMtn));
+  fillPoly(MANILA_NEAR_PTS, toRgb(p.nearMtn));
+  ctx.fillStyle = toRgb(lerpC(p.nearMtn,[120,105,85],0.4));
+  for (const [bx,by,bw,bh] of MANILA_BUILDINGS) ctx.fillRect(bx,by,bw,bh);
+  for (const [pcx,pby,trunkH,frondSpan] of MANILA_PALMS) {
+    const lean = (pcx % 60 < 30) ? -14 : 12;
+    const ftx = pcx + lean*1.5, fty = pby - trunkH;
+    ctx.strokeStyle = toRgb(lerpC(p.tree,[80,55,20],0.7)); ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(pcx,pby);
+    ctx.quadraticCurveTo(pcx+lean, pby-trunkH*0.5, ftx, fty); ctx.stroke();
+    ctx.strokeStyle = toRgb(p.tree); ctx.lineWidth = 2;
+    for (let fi=0; fi<7; fi++) {
+      const angle = (-180 + fi*30) * Math.PI / 180;
+      ctx.beginPath(); ctx.moveTo(ftx,fty);
+      ctx.lineTo(ftx + Math.cos(angle)*frondSpan, fty + Math.sin(angle)*frondSpan); ctx.stroke();
+    }
+  }
+}
+
+function drawSpaceBg() {
+  const gY = H - GROUND_H;
+  ctx.fillStyle = "rgb(5,5,18)"; ctx.fillRect(0, 0, W, gY);
+  for (const [ncx,ncy,nr,[r,g,b],a] of NEBULAE) {
+    const grd = ctx.createRadialGradient(ncx,ncy,0,ncx,ncy,nr);
+    grd.addColorStop(0, `rgba(${r},${g},${b},${a})`);
+    grd.addColorStop(0.5, `rgba(${r},${g},${b},${+(a*0.4).toFixed(3)})`);
+    grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grd; ctx.fillRect(ncx-nr, ncy-nr, nr*2, nr*2);
+  }
+  const now = Date.now() / 900;
+  for (const [sx,sy,sr] of SPACE_STARS) {
+    const alpha = sr >= 1.5 ? 0.6 + 0.4*Math.sin(now + sx*0.05) : 0.85;
+    ctx.beginPath(); ctx.arc(sx,sy,sr,0,Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,235,${+alpha.toFixed(3)})`; ctx.fill();
+  }
+  const ep = SPACE_PLANET;
+  const eg = ctx.createRadialGradient(ep.cx-10,ep.cy-10,4,ep.cx,ep.cy,ep.r);
+  eg.addColorStop(0,"rgb(100,180,255)"); eg.addColorStop(0.4,"rgb(55,140,80)");
+  eg.addColorStop(0.75,"rgb(30,100,180)"); eg.addColorStop(1,"rgb(15,50,100)");
+  ctx.beginPath(); ctx.arc(ep.cx,ep.cy,ep.r,0,Math.PI*2); ctx.fillStyle=eg; ctx.fill();
+  const rg = ctx.createRadialGradient(ep.cx,ep.cy,ep.r-4,ep.cx,ep.cy,ep.r+6);
+  rg.addColorStop(0,"rgba(100,200,255,0)"); rg.addColorStop(1,"rgba(100,200,255,0.25)");
+  ctx.beginPath(); ctx.arc(ep.cx,ep.cy,ep.r+6,0,Math.PI*2); ctx.fillStyle=rg; ctx.fill();
+  const sm = SPACE_MOON;
+  ctx.beginPath(); ctx.arc(sm.cx,sm.cy,sm.r,0,Math.PI*2);
+  ctx.fillStyle="rgb(188,183,172)"; ctx.fill();
+  ctx.fillStyle="rgba(0,0,0,0.18)";
+  ctx.beginPath(); ctx.arc(sm.cx+5,sm.cy-4,5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(sm.cx-5,sm.cy+5,3,0,Math.PI*2); ctx.fill();
+  fillPoly(SPACE_GROUND_PTS, "rgb(72,72,78)");
+  ctx.strokeStyle="rgb(92,90,96)"; ctx.lineWidth=2;
+  ctx.beginPath();
+  SPACE_GROUND_PTS.slice(1,-2).forEach(([x,y],i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y));
+  ctx.stroke();
+}
+
+function drawWorldGeom(wIdx, p) {
+  switch(wIdx) {
+    case 0: drawEarth(p);     break;
+    case 1: drawGreatWall(p); break;
+    case 2: drawTokyo(p);     break;
+    case 3: drawParis(p);     break;
+    case 4: drawManila(p);    break;
+  }
+}
+
+function drawBg() {
+  const si = getSceneInfo();
+  if (si.worldIdx === 5) { drawSpaceBg(); return; }
+  const p = getPal();
+  drawSky(p);
+  drawCelestials(p);
+  drawClouds(p, si.worldBlend, si.nextWorldIdx);
+  if (si.worldBlend < 0.001) {
+    drawWorldGeom(si.worldIdx, p);
+  } else {
+    ctx.save(); ctx.globalAlpha = 1 - si.worldBlend;
+    drawWorldGeom(si.worldIdx, getPalForWorld(si.worldIdx, si.todPhase, si.nextTodPhase, si.todBlend));
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = si.worldBlend;
+    const ni = si.nextWorldIdx === 5 ? 4 : si.nextWorldIdx;
+    drawWorldGeom(ni, getPalForWorld(ni, 0, 0, 0));
+    ctx.restore();
   }
 }
 
@@ -589,18 +880,20 @@ function drawBg() {
 // ---------------------------------------------------------------------------
 let state = "select";  // "select" | "start" | "playing" | "dead"
 let bird, pipes, score, frame, highScore;
-let curSpeed, curGap, lastDiffScore;
+let curSpeed, curGap, lastSpeedScore, lastGapScore, lastWorldIdx;
 let selectedChar = 0;  // 0 = Pillow, 1 = Blanket
 highScore = 0;
 
 function reset() {
-  bird          = new Bird(CHAR_SPRITES[selectedChar]);
-  pipes         = [];
-  score         = 0;
-  frame         = 0;
-  curSpeed      = PIPE_SPEED;
-  curGap        = PIPE_GAP;
-  lastDiffScore = 0;
+  bird           = new Bird(CHAR_SPRITES[selectedChar]);
+  pipes          = [];
+  score          = 0;
+  frame          = 0;
+  curSpeed       = PIPE_SPEED;
+  curGap         = PIPE_GAP;
+  lastSpeedScore = 0;
+  lastGapScore   = 0;
+  lastWorldIdx   = 0;
 }
 reset();
 
@@ -674,9 +967,11 @@ function update() {
   frame++;
   bird.update();
 
+  const si = getSceneInfo();
   const interval = Math.floor(PIPE_SPACING / curSpeed);
   if (frame > 0 && frame % interval === 0) {
-    pipes.push(new Pipe(W));
+    if (si.worldIdx === 5) pipes.push(new Asteroid(W));
+    else                   pipes.push(new Pipe(W));
   }
 
   for (const pipe of pipes) {
@@ -684,11 +979,21 @@ function update() {
     if (!pipe.scored && pipe.x + PIPE_W < BIRD_X) {
       pipe.scored = true;
       score++;
-      // Increase difficulty every 25 points
-      if (score % 25 === 0 && score !== lastDiffScore) {
-        lastDiffScore = score;
+      // World change → reset gap to that world's baseline
+      const newSi = getSceneInfo();
+      if (newSi.worldIdx !== lastWorldIdx) {
+        lastWorldIdx = newSi.worldIdx;
+        if (newSi.worldIdx < 5) curGap = WORLD_BASE_GAPS[newSi.worldIdx];
+      }
+      // Speed: increase every 50 points
+      if (score % 50 === 0 && score !== lastSpeedScore) {
+        lastSpeedScore = score;
         curSpeed = Math.min(curSpeed + 0.5, 7);
-        curGap   = Math.max(curGap   - 10,  100);
+      }
+      // Gap: tighten every 30 points
+      if (score % 30 === 0 && score !== lastGapScore) {
+        lastGapScore = score;
+        curGap = Math.max(curGap - 10, 100);
       }
     }
   }
@@ -784,15 +1089,19 @@ function draw() {
   const pal = getPal();
   ctx.fillStyle = toRgb(pal.ground);
   ctx.fillRect(0, H - GROUND_H, W, GROUND_H);
-  ctx.fillStyle = toRgb(pal.gndLine);
-  ctx.fillRect(0, H - GROUND_H, W, 4);
+  if (pal.worldIdx !== 5) {
+    ctx.fillStyle = toRgb(pal.gndLine);
+    ctx.fillRect(0, H - GROUND_H, W, 4);
+  }
 
   // Bird
   bird.draw();
 
-  // Score during play
+  // Score + world name during play
   if (state === "playing") {
     drawText(String(score), 52, W / 2, 60);
+    const si = getSceneInfo();
+    drawText(WORLD_NAMES[si.worldIdx], 18, W / 2, 102);
   }
 
   // Overlay
