@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#1a1a2e" />
-  <title>Flappy Poodle</title>
+  <title>Poodle Flap</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; background: #1a1a2e; overflow: hidden; }
@@ -225,6 +225,67 @@ const MALTIPOO_SPRITE = makeMaltipooSprite();
 
 const CHAR_SPRITES = [POODLE_SPRITE, MALTIPOO_SPRITE];
 const CHAR_NAMES   = ["Pillow", "Blanket"];
+
+// ---------------------------------------------------------------------------
+// Landing-screen pixel-art sprites (12×14 each, rendered at 7× scale)
+// ---------------------------------------------------------------------------
+function makePoodleLandingSprite() {
+  const oc = document.createElement("canvas");
+  oc.width = 12; oc.height = 14;
+  const c = oc.getContext("2d");
+  const B = "#0f0f0f", W = "#ffffff", k = "#666666", p = "#ff6688", _ = null;
+  const grid = [
+    [_,_,B,B,B,B,B,B,B,B,_,_],
+    [_,B,B,B,B,B,B,B,B,B,B,_],
+    [B,B,B,B,B,B,B,B,B,B,B,B],
+    [B,B,B,B,B,B,B,B,B,B,B,B],
+    [B,B,B,W,W,B,B,W,W,B,B,B],  // eyes open
+    [B,B,B,W,k,B,B,W,k,B,B,B],  // pupils
+    [B,B,B,B,B,B,B,B,B,B,B,B],
+    [B,B,B,B,p,p,B,B,B,B,B,B],  // nose
+    [B,B,B,B,B,B,B,B,B,B,B,B],
+    [B,B,p,B,B,B,B,B,B,p,B,B],  // smile corners
+    [B,B,B,p,p,p,p,p,p,B,B,B],  // smile bottom
+    [B,B,B,B,B,B,B,B,B,B,B,B],
+    [_,B,B,B,B,B,B,B,B,B,B,_],
+    [_,_,B,B,B,B,B,B,B,B,_,_],
+  ];
+  for (let row = 0; row < grid.length; row++)
+    for (let col = 0; col < grid[row].length; col++)
+      if (grid[row][col]) { c.fillStyle = grid[row][col]; c.fillRect(col, row, 1, 1); }
+  return oc;
+}
+
+function makeMaltipooLandingSprite() {
+  const oc = document.createElement("canvas");
+  oc.width = 12; oc.height = 14;
+  const c = oc.getContext("2d");
+  const A = "#e8a85c", E = "#b8743e", W = "#ffffff", k = "#3a1f08",
+        n = "#1a1010", p = "#cc4466", _ = null;
+  const grid = [
+    [_,_,A,A,A,A,A,A,A,A,_,_],
+    [_,A,A,A,A,A,A,A,A,A,A,_],
+    [A,A,A,A,A,A,A,A,A,A,A,A],
+    [E,A,A,A,A,A,A,A,A,A,A,E],  // ear tops
+    [E,A,A,W,W,A,A,W,W,A,A,E],  // eyes + ears
+    [E,A,A,W,k,A,A,W,k,A,A,E],  // pupils + ears
+    [E,A,A,A,A,A,A,A,A,A,A,E],
+    [E,A,A,A,n,n,A,A,A,A,A,E],  // nose + ears
+    [E,A,A,A,A,A,A,A,A,A,A,E],
+    [_,A,p,A,A,A,A,A,A,p,A,_],  // smile corners
+    [_,A,A,p,p,p,p,p,p,A,A,_],  // smile bottom
+    [_,A,A,A,A,A,A,A,A,A,A,_],
+    [_,_,A,A,A,A,A,A,A,A,_,_],
+    [_,_,_,A,A,A,A,A,A,_,_,_],
+  ];
+  for (let row = 0; row < grid.length; row++)
+    for (let col = 0; col < grid[row].length; col++)
+      if (grid[row][col]) { c.fillStyle = grid[row][col]; c.fillRect(col, row, 1, 1); }
+  return oc;
+}
+
+const POODLE_LANDING   = makePoodleLandingSprite();
+const MALTIPOO_LANDING = makeMaltipooLandingSprite();
 
 // ---------------------------------------------------------------------------
 // Bird
@@ -878,7 +939,9 @@ function drawBg() {
 // ---------------------------------------------------------------------------
 // Game state
 // ---------------------------------------------------------------------------
-let state = "select";  // "select" | "start" | "playing" | "dead"
+function isFirstVisit() { return !localStorage.getItem("poodleFlapVisited"); }
+function markVisited()   { localStorage.setItem("poodleFlapVisited", "1"); }
+let state = isFirstVisit() ? "landing" : "select";
 let bird, pipes, score, frame, highScore;
 let curSpeed, curGap, lastSpeedScore, lastGapScore, lastWorldIdx;
 let selectedChar = 0;  // 0 = Pillow, 1 = Blanket
@@ -901,7 +964,9 @@ reset();
 // Input
 // ---------------------------------------------------------------------------
 function onKeyAction() {
-  if (state === "select") {
+  if (state === "landing") {
+    markVisited(); state = "select";
+  } else if (state === "select") {
     reset(); state = "start";
   } else if (state === "start") {
     state = "playing";
@@ -916,10 +981,18 @@ function onKeyAction() {
 }
 
 // Select-screen box geometry (must match drawSelectScreen)
+const LANDING_PLAY_BTN = { x: W/2 - 75, y: 340, w: 150, h: 50 };
 const SEL_BOX_W = 130, SEL_BOX_H = 120;
 const SEL_CENTERS = [[110, 235], [290, 235]];
 
 function onMouseDown(mx, my) {
+  if (state === "landing") {
+    const b = LANDING_PLAY_BTN;
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+      markVisited(); state = "select";
+    }
+    return;
+  }
   if (state === "select") {
     for (let i = 0; i < 2; i++) {
       const [cx, cy] = SEL_CENTERS[i];
@@ -1037,6 +1110,49 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
+function drawLandingScreen() {
+  drawBg();
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(0, 0, W, H);
+
+  // Title
+  drawText("POODLE", 54, W/2, 95,  true, "#ffd700");
+  drawText("FLAP",   54, W/2, 155, true, "#ffd700");
+
+  // Pixelated character sprites — 12×14 px scaled 7×
+  const SCALE = 7, SW = 12 * SCALE, SH = 14 * SCALE;
+  const leftX  = W/2 - SW - 10;
+  const rightX = W/2 + 10;
+  const charY  = 188;
+  const b1 = Math.sin(Date.now() / 320) *  7;
+  const b2 = Math.sin(Date.now() / 280 + Math.PI) * 7;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(MALTIPOO_LANDING, leftX,  charY + b1, SW, SH);
+  ctx.drawImage(POODLE_LANDING,   rightX, charY + b2, SW, SH);
+  ctx.restore();
+
+  drawText("Blanket", 15, leftX  + SW/2, charY + SH + 16, true, "rgba(255,255,255,0.8)");
+  drawText("Pillow",  15, rightX + SW/2, charY + SH + 16, true, "rgba(255,255,255,0.8)");
+
+  // Play button
+  const btn = LANDING_PLAY_BTN;
+  ctx.fillStyle = "#ffd700";
+  roundRect(btn.x, btn.y, btn.w, btn.h, 12);
+  ctx.fill();
+  ctx.fillStyle = "#1a1a2e";
+  ctx.font = "bold 24px Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("PLAY", W/2, btn.y + btn.h/2);
+
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.font = "13px Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("tap or press space", W/2, H - 38);
+}
+
 function drawSelectScreen() {
   drawBg();  // animated background (score=0 → morning palette)
 
@@ -1077,7 +1193,8 @@ function drawSelectScreen() {
 // Draw
 // ---------------------------------------------------------------------------
 function draw() {
-  if (state === "select") { drawSelectScreen(); return; }
+  if (state === "landing") { drawLandingScreen(); return; }
+  if (state === "select")  { drawSelectScreen();  return; }
 
   // Sky + mountains + trees (everything behind pipes)
   drawBg();
@@ -1110,7 +1227,7 @@ function draw() {
     ctx.fillRect(0, 0, W, H);
 
     if (state === "start") {
-      drawText("FLAPPY POODLE", 36, W / 2, H / 2 - 40);
+      drawText("POODLE FLAP", 36, W / 2, H / 2 - 40);
       drawText("Tap to start", 22, W / 2, H / 2 + 20);
     } else {
       drawText("GAME OVER",           36, W / 2, H / 2 - 60);
