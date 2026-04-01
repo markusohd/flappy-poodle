@@ -230,25 +230,27 @@ const CHAR_NAMES   = ["Pillow", "Blanket"];
 // Landing-screen pixel-art sprites (12×14 each, rendered at 7× scale)
 // ---------------------------------------------------------------------------
 function makePoodleLandingSprite() {
+  // Pillow — black standard poodle
+  // Bumpy poof on top = curly poodle fur; round pom ears separated by gaps on sides
   const oc = document.createElement("canvas");
   oc.width = 12; oc.height = 14;
   const c = oc.getContext("2d");
-  const B = "#0f0f0f", W = "#ffffff", k = "#666666", p = "#ff6688", _ = null;
+  const B = "#0f0f0f", W = "#ffffff", k = "#888888", p = "#ff6688", _ = null;
   const grid = [
-    [_,_,B,B,B,B,B,B,B,B,_,_],
+    [_,B,_,B,_,B,_,B,_,B,_,_],  // bumpy poodle poof (5 curls)
+    [_,B,B,B,B,B,B,B,B,B,B,_],  // poof base
+    [_,B,B,B,B,B,B,B,B,B,B,_],  // head
+    [B,B,B,B,B,B,B,B,B,B,B,B],  // pom ears extend out
+    [B,_,B,W,W,B,B,W,W,B,_,B],  // eyes  (gap separates pom ears from face)
+    [B,_,B,W,k,B,B,W,k,B,_,B],  // pupils
+    [B,_,B,B,B,B,B,B,B,B,_,B],
+    [B,_,B,B,p,p,B,B,B,B,_,B],  // nose
+    [B,B,B,B,B,B,B,B,B,B,B,B],  // lower face rejoins
+    [_,B,p,B,B,B,B,B,B,p,B,_],  // smile corners
+    [_,B,B,p,p,p,p,p,p,B,B,_],  // smile
     [_,B,B,B,B,B,B,B,B,B,B,_],
-    [B,B,B,B,B,B,B,B,B,B,B,B],
-    [B,B,B,B,B,B,B,B,B,B,B,B],
-    [B,B,B,W,W,B,B,W,W,B,B,B],  // eyes open
-    [B,B,B,W,k,B,B,W,k,B,B,B],  // pupils
-    [B,B,B,B,B,B,B,B,B,B,B,B],
-    [B,B,B,B,p,p,B,B,B,B,B,B],  // nose
-    [B,B,B,B,B,B,B,B,B,B,B,B],
-    [B,B,p,B,B,B,B,B,B,p,B,B],  // smile corners
-    [B,B,B,p,p,p,p,p,p,B,B,B],  // smile bottom
-    [B,B,B,B,B,B,B,B,B,B,B,B],
-    [_,B,B,B,B,B,B,B,B,B,B,_],
     [_,_,B,B,B,B,B,B,B,B,_,_],
+    [_,_,_,B,B,B,B,B,B,_,_,_],
   ];
   for (let row = 0; row < grid.length; row++)
     for (let col = 0; col < grid[row].length; col++)
@@ -257,26 +259,28 @@ function makePoodleLandingSprite() {
 }
 
 function makeMaltipooLandingSprite() {
+  // Blanket — apricot maltipoo
+  // Smooth rounded head (no curls); thick floppy hanging ears in darker apricot
   const oc = document.createElement("canvas");
   oc.width = 12; oc.height = 14;
   const c = oc.getContext("2d");
   const A = "#e8a85c", E = "#b8743e", W = "#ffffff", k = "#3a1f08",
         n = "#1a1010", p = "#cc4466", _ = null;
   const grid = [
-    [_,_,A,A,A,A,A,A,A,A,_,_],
+    [_,_,A,A,A,A,A,A,A,A,_,_],  // smooth round head top (maltipoo ≠ bumpy)
     [_,A,A,A,A,A,A,A,A,A,A,_],
     [A,A,A,A,A,A,A,A,A,A,A,A],
-    [E,A,A,A,A,A,A,A,A,A,A,E],  // ear tops
-    [E,A,A,W,W,A,A,W,W,A,A,E],  // eyes + ears
-    [E,A,A,W,k,A,A,W,k,A,A,E],  // pupils + ears
-    [E,A,A,A,A,A,A,A,A,A,A,E],
-    [E,A,A,A,n,n,A,A,A,A,A,E],  // nose + ears
-    [E,A,A,A,A,A,A,A,A,A,A,E],
-    [_,A,p,A,A,A,A,A,A,p,A,_],  // smile corners
-    [_,A,A,p,p,p,p,p,p,A,A,_],  // smile bottom
-    [_,A,A,A,A,A,A,A,A,A,A,_],
+    [E,E,A,A,A,A,A,A,A,A,E,E],  // thick floppy ears begin (darker apricot)
+    [E,E,A,W,W,A,A,W,W,A,E,E],  // eyes + ears
+    [E,E,A,W,k,A,A,W,k,A,E,E],  // pupils + ears
+    [E,E,A,A,A,A,A,A,A,A,E,E],
+    [E,E,A,A,n,n,A,A,A,A,E,E],  // nose + ears
+    [E,E,A,A,A,A,A,A,A,A,E,E],  // ears continue down
+    [_,E,p,A,A,A,A,A,A,p,E,_],  // smile corners, ears taper
+    [_,_,A,p,p,p,p,p,p,A,_,_],  // smile
     [_,_,A,A,A,A,A,A,A,A,_,_],
     [_,_,_,A,A,A,A,A,A,_,_,_],
+    [_,_,_,_,A,A,A,A,_,_,_,_],
   ];
   for (let row = 0; row < grid.length; row++)
     for (let col = 0; col < grid[row].length; col++)
