@@ -44,7 +44,7 @@ const GRAVITY       = 0.5;
 const FLAP_STRENGTH = -9;
 const MAX_FALL      = 10;
 const PIPE_W        = 60;
-const PIPE_GAP      = 220;
+const PIPE_GAP      = 185;
 const PIPE_SPEED    = 3;
 const PIPE_SPACING  = 220;
 const PIPE_CAP_H    = 16;
@@ -359,7 +359,7 @@ class Pipe {
 class Asteroid {
   constructor(x) {
     this.x      = x;
-    this.gap    = Math.max(curGap, 120);
+    this.gap    = curGap;
     this.gapTop = Math.floor(Math.random() * (H - GROUND_H - this.gap - 80 - 100)) + 100;
     this.scored = false;
     this._seed  = Math.floor(Math.random() * 9999);
@@ -1046,7 +1046,7 @@ function update() {
 
   const si = getSceneInfo();
   const interval = Math.floor(PIPE_SPACING / curSpeed);
-  if (frame > 0 && frame % interval === 0) {
+  if (frame > 120 && frame % interval === 0) {
     if (si.worldIdx === 5) pipes.push(new Asteroid(W));
     else                   pipes.push(new Pipe(W));
   }
@@ -1070,7 +1070,7 @@ function update() {
       // Gap: tighten every 30 points
       if (score % 30 === 0 && score !== lastGapScore) {
         lastGapScore = score;
-        curGap = Math.max(curGap - 10, 100);
+        curGap = Math.max(curGap - 10, 115);
       }
     }
   }
