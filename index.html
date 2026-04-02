@@ -19,12 +19,10 @@
     }
     canvas {
       display: block;
-      /* Scale to fill the viewport while keeping the 400:600 ratio */
-      width: min(400px, 100vw, calc(100svh * 400 / 600));
+      /* Fill the full viewport — no 400px cap so tablets go edge-to-edge */
+      width: min(100vw, calc(100svh * 400 / 600));
       height: auto;
       aspect-ratio: 400 / 600;
-      border-radius: clamp(0px, 2vw, 8px);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
       touch-action: none;
       -webkit-user-select: none;
       user-select: none;
@@ -434,34 +432,35 @@ function resumeAudio() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
-// Pillow (toy poodle) — sharp high "yip"
+// Pillow (black toy poodle) — sharp high "yip", short and snappy
 function playPillowBark() {
   const t = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
   const g   = audioCtx.createGain();
   osc.connect(g); g.connect(masterGain);
   osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(1100, t);
-  osc.frequency.exponentialRampToValueAtTime(700,  t + 0.05);
-  osc.frequency.exponentialRampToValueAtTime(500,  t + 0.12);
-  g.gain.setValueAtTime(0.15, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
-  osc.start(t); osc.stop(t + 0.15);
+  osc.frequency.setValueAtTime(1200, t);
+  osc.frequency.exponentialRampToValueAtTime(750, t + 0.04);
+  osc.frequency.exponentialRampToValueAtTime(520, t + 0.11);
+  g.gain.setValueAtTime(0.28, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+  osc.start(t); osc.stop(t + 0.14);
 }
 
-// Blanket (maltipoo) — softer, rounder "woof"
+// Blanket (apricot maltipoo) — round low "woof", slower and fuller than Pillow
+// Uses triangle (rounder/warmer than sawtooth) at phone-speaker-safe frequencies
 function playBlanketBark() {
   const t = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
   const g   = audioCtx.createGain();
   osc.connect(g); g.connect(masterGain);
   osc.type = 'triangle';
-  osc.frequency.setValueAtTime(380, t);
-  osc.frequency.exponentialRampToValueAtTime(230, t + 0.10);
-  osc.frequency.exponentialRampToValueAtTime(170, t + 0.22);
-  g.gain.setValueAtTime(0.20, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-  osc.start(t); osc.stop(t + 0.26);
+  osc.frequency.setValueAtTime(520, t);
+  osc.frequency.exponentialRampToValueAtTime(310, t + 0.12);
+  osc.frequency.exponentialRampToValueAtTime(240, t + 0.32);
+  g.gain.setValueAtTime(0.35, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+  osc.start(t); osc.stop(t + 0.38);
 }
 
 function playBark() {
@@ -501,10 +500,66 @@ function playCrash() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Menu music — retro chiptune, plays on landing + select screens
+// Each entry: [melodyFreq, bassFreq, stepDur]  (one step = one beat)
+// ---------------------------------------------------------------------------
+const MENU_STEPS = [
+  [523.3, 130.8, 0.15],[659.3, 196.0, 0.15],[784.0, 261.6, 0.15],[1046.5,196.0, 0.20],
+  [880.0, 130.8, 0.15],[784.0, 196.0, 0.15],[659.3, 261.6, 0.15],[523.3, 196.0, 0.20],
+  [587.3, 146.8, 0.15],[698.5, 220.0, 0.15],[880.0, 293.7, 0.15],[1174.7,220.0, 0.20],
+  [1046.5,146.8, 0.15],[880.0, 220.0, 0.15],[784.0, 293.7, 0.15],[659.3, 220.0, 0.25],
+];
+const MENU_VOL_MELODY = 0.07;
+const MENU_VOL_BASS   = 0.04;
+let   menuPlaying = false;
+let   menuTimer   = null;
+
+function scheduleMenuNote(freq, startTime, dur, vol, type) {
+  const osc = audioCtx.createOscillator();
+  const g   = audioCtx.createGain();
+  osc.connect(g); g.connect(masterGain);
+  osc.type = type;
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(vol,  startTime);
+  g.gain.setValueAtTime(vol,  startTime + dur * 0.70);
+  g.gain.linearRampToValueAtTime(0, startTime + dur * 0.95);
+  osc.start(startTime);
+  osc.stop(startTime + dur);
+}
+
+function scheduleMenuBar(startTime) {
+  if (!menuPlaying) return;
+  let t = startTime;
+  for (const [mFreq, bFreq, dur] of MENU_STEPS) {
+    scheduleMenuNote(mFreq, t, dur, MENU_VOL_MELODY, 'square');
+    scheduleMenuNote(bFreq, t, dur * 1.3, MENU_VOL_BASS, 'triangle');
+    t += dur;
+  }
+  const barDur = MENU_STEPS.reduce((s,[,,d])=>s+d, 0);
+  menuTimer = setTimeout(() => scheduleMenuBar(startTime + barDur),
+                         (barDur - 0.12) * 1000);
+}
+
+function startMenuMusic() {
+  if (menuPlaying) return;
+  menuPlaying = true;
+  // audioCtx.resume() is async — wait for it before scheduling notes
+  audioCtx.resume().then(() => {
+    if (!menuPlaying) return;  // stopped before resume finished
+    scheduleMenuBar(audioCtx.currentTime + 0.05);
+  });
+}
+
+function stopMenuMusic() {
+  menuPlaying = false;
+  if (menuTimer) { clearTimeout(menuTimer); menuTimer = null; }
+}
+
 // Background music — minimal C-major arpeggio loop, very soft
 const BG_SEQ = [261.6, 329.6, 392.0, 329.6, 261.6, 329.6, 392.0, 329.6];
 const BG_DUR = 0.45;   // seconds per note
-const BG_VOL = 0.04;
+const BG_VOL = 0.13;
 let   bgPlaying = false;
 let   bgTimer   = null;
 
@@ -536,8 +591,10 @@ function scheduleBgBar(startTime) {
 function startBgMusic() {
   if (bgPlaying) return;
   bgPlaying = true;
-  resumeAudio();
-  scheduleBgBar(audioCtx.currentTime + 0.15);
+  audioCtx.resume().then(() => {
+    if (!bgPlaying) return;
+    scheduleBgBar(audioCtx.currentTime + 0.15);
+  });
 }
 
 function stopBgMusic() {
@@ -943,9 +1000,8 @@ function drawBg() {
 // ---------------------------------------------------------------------------
 // Game state
 // ---------------------------------------------------------------------------
-function isFirstVisit() { return !localStorage.getItem("poodleFlapVisited"); }
-function markVisited()   { localStorage.setItem("poodleFlapVisited", "1"); }
-let state = isFirstVisit() ? "landing" : "select";
+// Landing page always shows on every fresh app start
+let state = "landing";
 let bird, pipes, score, frame, highScore;
 let curSpeed, curGap, lastSpeedScore, lastGapScore, lastWorldIdx;
 let selectedChar = 0;  // 0 = Pillow, 1 = Blanket
@@ -969,11 +1025,12 @@ reset();
 // ---------------------------------------------------------------------------
 function onKeyAction() {
   if (state === "landing") {
-    markVisited(); state = "select";
+    state = "select";  // menu music keeps playing into select screen
   } else if (state === "select") {
     reset(); state = "start";
   } else if (state === "start") {
     state = "playing";
+    stopMenuMusic();  // silence menu music when game begins
     startBgMusic();
   } else if (state === "playing") {
     bird.flap();
@@ -981,6 +1038,7 @@ function onKeyAction() {
   } else if (state === "dead") {
     stopBgMusic();
     state = "select";
+    startMenuMusic();  // resume menu music on select screen after death
   }
 }
 
@@ -993,7 +1051,7 @@ function onMouseDown(mx, my) {
   if (state === "landing") {
     const b = LANDING_PLAY_BTN;
     if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
-      markVisited(); state = "select";
+      state = "select";  // menu music keeps playing into select screen
     }
     return;
   }
@@ -1021,6 +1079,7 @@ document.addEventListener("keydown", e => {
 });
 
 canvas.addEventListener("mousedown", e => {
+  if (state === "landing" || state === "select") startMenuMusic();
   const r  = canvas.getBoundingClientRect();
   const mx = (e.clientX - r.left) * (W / r.width);
   const my = (e.clientY - r.top)  * (H / r.height);
@@ -1029,6 +1088,8 @@ canvas.addEventListener("mousedown", e => {
 
 canvas.addEventListener("touchstart", e => {
   e.preventDefault();
+  // Start menu music on first touch (mobile requires user gesture for audio)
+  if (state === "landing" || state === "select") startMenuMusic();
   const r  = canvas.getBoundingClientRect();
   const mx = (e.touches[0].clientX - r.left) * (W / r.width);
   const my = (e.touches[0].clientY - r.top)  * (H / r.height);
@@ -1151,10 +1212,7 @@ function drawLandingScreen() {
   ctx.textBaseline = "middle";
   ctx.fillText("PLAY", W/2, btn.y + btn.h/2);
 
-  ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.font = "13px Arial, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("tap or press space", W/2, H - 38);
+
 }
 
 function drawSelectScreen() {

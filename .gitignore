@@ -1,0 +1,9 @@
+node_modules/
+*.keystore
+android/
+www/
+.claude/
+icon-generator.html
+generate-icons.js
+generate-feature-graphic.js
+package-lock.json
