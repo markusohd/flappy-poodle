@@ -1,0 +1,14 @@
+# Core ML / RL
+stable-baselines3[extra]>=2.3.0
+gymnasium>=0.29.0
+torch>=2.2.0
+
+# Data / numerics
+numpy>=1.26.0
+pandas>=2.2.0
+
+# HTTP client
+requests>=2.31.0
+
+# (optional) TensorBoard for training visualisation
+tensorboard>=2.16.0
