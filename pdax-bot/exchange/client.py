@@ -15,7 +15,7 @@ import hmac
 import json
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
 import requests
@@ -55,30 +55,58 @@ class PDAXClient:
         params: Optional[Dict] = None,
         payload: Optional[Dict] = None,
         authenticated: bool = True,
+        _retries: int = 4,
     ) -> Any:
         url = cfg.base_url + path
         if params:
             url += "?" + urlencode(params)
 
         body = json.dumps(payload) if payload else ""
-        headers = self._auth_headers(url, body) if authenticated else {}
 
-        try:
-            resp = self.session.request(
-                method,
-                url,
-                headers=headers,
-                data=body if body else None,
-                timeout=10,
-            )
-            resp.raise_for_status()
-            return resp.json()
-        except requests.HTTPError as e:
-            logger.error("HTTP %s %s → %s: %s", method, path, resp.status_code, resp.text)
-            raise
-        except requests.RequestException as e:
-            logger.error("Request error %s %s: %s", method, path, e)
-            raise
+        for attempt in range(_retries):
+            # Re-sign on every attempt so the nonce stays fresh
+            headers = self._auth_headers(url, body) if authenticated else {}
+
+            try:
+                resp = self.session.request(
+                    method,
+                    url,
+                    headers=headers,
+                    data=body if body else None,
+                    timeout=10,
+                )
+
+                # Rate-limit: back off and retry
+                if resp.status_code == 429:
+                    wait = 2 ** (attempt + 1)
+                    logger.warning("Rate limited (429). Retrying in %ds...", wait)
+                    time.sleep(wait)
+                    continue
+
+                # Transient server errors: retry
+                if resp.status_code in (500, 502, 503, 504) and attempt < _retries - 1:
+                    wait = 2 ** attempt
+                    logger.warning("Server error %d on %s. Retrying in %ds...", resp.status_code, path, wait)
+                    time.sleep(wait)
+                    continue
+
+                resp.raise_for_status()
+                return resp.json()
+
+            except requests.Timeout:
+                wait = 2 ** attempt
+                logger.warning("Timeout on %s %s (attempt %d/%d). Retrying in %ds...",
+                               method, path, attempt + 1, _retries, wait)
+                time.sleep(wait)
+            except requests.HTTPError:
+                logger.error("HTTP %s %s → %s: %s", method, path, resp.status_code, resp.text)
+                raise
+            except requests.RequestException as e:
+                wait = 2 ** attempt
+                logger.warning("Request error %s %s: %s. Retrying in %ds...", method, path, e, wait)
+                time.sleep(wait)
+
+        raise requests.RequestException(f"Failed after {_retries} attempts: {method} {path}")
 
     # ── Public endpoints ───────────────────────────────────────────────────────
 
